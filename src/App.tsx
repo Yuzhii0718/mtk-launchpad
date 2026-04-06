@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { KeyboardEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import './App.css'
 import i18n from './i18n'
@@ -13,31 +12,18 @@ import {
   APP_VERSION,
   APP_AUTHOR,
 } from './constants'
-import type { Chip, DdrType, FirmwareCandidate, FirmwareSource, LogEntry, LogLevel } from './types'
+import type { Chip, DdrType, FirmwareCandidate, FirmwareSource } from './types'
 import { BUILTIN_BL2_CANDIDATES } from './data/builtinRamboot'
 import { candidateKey } from './utils/fileNameParsers'
 import { compareMd5, computeMd5 } from './utils/md5'
 import { fetchReleaseCandidates, triggerBrowserFileDownload } from './utils/githubRelease'
 import { resolveBl2Selection, resolveFipSelection } from './utils/firmwareSelection'
-import { toNumber, sleepMs, stringifyError } from './utils/common'
-import {
-  applyTerminalChunk,
-  createTerminalScreenState,
-  resetTerminalScreenState,
-  type TerminalScreenState,
-} from './utils/terminalScreen'
-import {
-  buildSpecialKeyPayload,
-  formatSpecialKeyLabel,
-  mapKeyboardEventToSpecialKey,
-  resolveLineEnding,
-  visualizeControlChars,
-  type TerminalNewlineMode,
-  type TerminalSpecialKey,
-} from './utils/terminalControl'
+import { toNumber, stringifyError } from './utils/common'
 import { ConnectionSection } from './components/sections/ConnectionSection'
 import { FirmwareSection } from './components/sections/FirmwareSection'
 import { ConsoleSection } from './components/sections/ConsoleSection'
+import { useLogs } from './hooks/useLogs'
+import { useTerminalController } from './hooks/useTerminalController'
 import { SerialConnection } from './services/serial/SerialConnection'
 import { MtkUartProtocol } from './services/serial/MtkUartProtocol'
 
@@ -87,24 +73,44 @@ function App() {
   const [fipActualMd5, setFipActualMd5] = useState<string | undefined>()
   const [fipMd5Passed, setFipMd5Passed] = useState<boolean | null>(null)
 
-  const [logs, setLogs] = useState<LogEntry[]>([])
-  const [activeConsoleTab, setActiveConsoleTab] = useState<'logs' | 'terminal'>('logs')
-  const [terminalOutput, setTerminalOutput] = useState('')
-  const [terminalInput, setTerminalInput] = useState('')
-  const [isTerminalRunning, setIsTerminalRunning] = useState(false)
-  const [terminalAppendNewline, setTerminalAppendNewline] = useState(true)
-  const [terminalNewlineMode, setTerminalNewlineMode] = useState<TerminalNewlineMode>('crlf')
-  const [terminalRxBytes, setTerminalRxBytes] = useState(0)
-  const [isUbootInterrupting, setIsUbootInterrupting] = useState(false)
   const [isTerminating, setIsTerminating] = useState(false)
 
   const connectionRef = useRef<SerialConnection | null>(null)
-  const logCounterRef = useRef(0)
-  const terminalStopRequestedRef = useRef(false)
-  const terminalLoopPromiseRef = useRef<Promise<void> | null>(null)
   const terminateRequestedRef = useRef(false)
   const reconnectAfterTerminateRef = useRef(false)
-  const terminalScreenRef = useRef<TerminalScreenState>(createTerminalScreenState())
+
+  const { logs, addLog, clearLogs } = useLogs()
+
+  const getText = useCallback((key: string): string => String(t(key)), [t])
+
+  const {
+    activeConsoleTab,
+    setActiveConsoleTab,
+    terminalOutput,
+    terminalInput,
+    setTerminalInput,
+    isTerminalRunning,
+    terminalAppendNewline,
+    setTerminalAppendNewline,
+    terminalNewlineMode,
+    setTerminalNewlineMode,
+    terminalRxBytes,
+    isUbootInterrupting,
+    clearTerminalOutput,
+    stopTerminalSession,
+    startTerminalSession,
+    handleSendTerminalInput,
+    sendTerminalSpecialKey,
+    handleInterruptIntoUboot,
+    handleInterruptIntoFailsafe,
+    handleTerminalInputKeyDown,
+  } = useTerminalController({
+    connectionRef,
+    isConnected,
+    isRunning,
+    addLog,
+    getText,
+  })
 
   const ddrOptions = DDR_OPTIONS_BY_CHIP[chip]
 
@@ -231,247 +237,6 @@ function App() {
       setExecutionRemoteFipKey('')
     }
   }, [executionRemoteFipKey, fipSource, releaseFipOptions])
-
-  const addLog = useCallback((level: LogLevel, message: string): void => {
-    logCounterRef.current += 1
-    const timestamp = new Date().toLocaleTimeString()
-    setLogs((prev) => [...prev, { id: logCounterRef.current, level, message, timestamp }])
-  }, [])
-
-  const clearLogs = (): void => {
-    setLogs([])
-  }
-
-  const clearTerminalOutput = (): void => {
-    resetTerminalScreenState(terminalScreenRef.current)
-    setTerminalOutput('')
-    setTerminalRxBytes(0)
-  }
-
-  const appendTerminalOutput = useCallback((chunk: string): void => {
-    if (!chunk) {
-      return
-    }
-    const normalized = applyTerminalChunk(terminalScreenRef.current, chunk)
-    const next = normalized
-    if (next.length <= 200000) {
-      setTerminalOutput(next)
-      return
-    }
-    setTerminalOutput(next.slice(next.length - 200000))
-  }, [])
-
-  const stopTerminalSession = useCallback(async (withLog: boolean): Promise<void> => {
-    terminalStopRequestedRef.current = true
-    const loop = terminalLoopPromiseRef.current
-    if (loop) {
-      await loop.catch(() => undefined)
-    }
-    terminalLoopPromiseRef.current = null
-    setIsTerminalRunning(false)
-    if (withLog) {
-      addLog('info', t('terminalStopped'))
-    }
-  }, [addLog, t])
-
-  const startTerminalSession = useCallback(async (withLog: boolean): Promise<void> => {
-    const connection = connectionRef.current
-    if (!connection || !isConnected) {
-      addLog('error', t('serialNotConnected'))
-      return
-    }
-    if (isRunning) {
-      addLog('warn', t('terminalWaitForWorkflow'))
-      return
-    }
-    if (terminalLoopPromiseRef.current) {
-      return
-    }
-
-    terminalStopRequestedRef.current = false
-    setIsTerminalRunning(true)
-    setActiveConsoleTab('terminal')
-    if (withLog) {
-      addLog('info', t('terminalStarted'))
-    }
-
-    const decoder = new TextDecoder()
-    terminalLoopPromiseRef.current = (async () => {
-      try {
-        while (!terminalStopRequestedRef.current) {
-          try {
-            const bytes = await connection.readExact(1, 300)
-            setTerminalRxBytes((prev) => prev + bytes.length)
-            appendTerminalOutput(decoder.decode(bytes, { stream: true }))
-          } catch (error) {
-            if (terminalStopRequestedRef.current) {
-              break
-            }
-            const message = stringifyError(error)
-            if (message.toLowerCase().includes('timeout')) {
-              continue
-            }
-            throw error
-          }
-        }
-      } catch (error) {
-        addLog('error', `${t('terminalReadFailed')}: ${stringifyError(error)}`)
-      } finally {
-        terminalLoopPromiseRef.current = null
-        setIsTerminalRunning(false)
-      }
-    })()
-  }, [addLog, appendTerminalOutput, isConnected, isRunning, t])
-
-  const handleSendTerminalInput = async (): Promise<void> => {
-    const connection = connectionRef.current
-    const raw = terminalInput
-    if (!connection || !isConnected) {
-      addLog('error', t('serialNotConnected'))
-      return
-    }
-    if (!isTerminalRunning) {
-      addLog('warn', t('terminalStartBeforeSend'))
-      return
-    }
-    if (!raw.length) {
-      return
-    }
-
-    try {
-      const lineEnding = terminalAppendNewline ? resolveLineEnding(terminalNewlineMode) : ''
-      const payload = `${raw}${lineEnding}`
-      if (!payload.length) {
-        return
-      }
-      appendTerminalOutput(`\n> ${visualizeControlChars(payload)}\n`)
-      await connection.write(new TextEncoder().encode(payload))
-      setTerminalInput('')
-    } catch (error) {
-      addLog('error', `${t('terminalWriteFailed')}: ${stringifyError(error)}`)
-    }
-  }
-
-  const sendTerminalSpecialKey = useCallback(async (key: TerminalSpecialKey): Promise<void> => {
-    const connection = connectionRef.current
-    if (!connection || !isConnected) {
-      addLog('error', t('serialNotConnected'))
-      return
-    }
-    if (!isTerminalRunning) {
-      addLog('warn', t('terminalStartBeforeSend'))
-      return
-    }
-
-    const payload = buildSpecialKeyPayload(key, terminalNewlineMode)
-    if (!payload.length) {
-      return
-    }
-
-    try {
-      appendTerminalOutput(`\n> [${formatSpecialKeyLabel(key, t)}] ${visualizeControlChars(payload)}\n`)
-      await connection.write(new TextEncoder().encode(payload))
-    } catch (error) {
-      addLog('error', `${t('terminalWriteFailed')}: ${stringifyError(error)}`)
-    }
-  }, [addLog, appendTerminalOutput, isConnected, isTerminalRunning, t, terminalNewlineMode])
-
-  const runUbootInterruptSequence = useCallback(async (): Promise<void> => {
-    const connection = connectionRef.current
-    if (!connection || !isConnected) {
-      addLog('error', t('serialNotConnected'))
-      return
-    }
-
-    if (!terminalLoopPromiseRef.current) {
-      await startTerminalSession(false)
-    }
-
-    setIsUbootInterrupting(true)
-    addLog('info', t('ubootInterruptRunning'))
-
-    const encoder = new TextEncoder()
-    const payload = buildSpecialKeyPayload('esc', terminalNewlineMode)
-    const deadline = Date.now() + 5000
-    let sent = 0
-
-    try {
-      appendTerminalOutput(`\n> [${t('interruptIntoUboot')}] ${visualizeControlChars(payload)} x ~5s\n`)
-      while (Date.now() < deadline) {
-        await connection.write(encoder.encode(payload))
-        sent += 1
-        await sleepMs(80)
-      }
-      addLog('success', `${t('ubootInterruptDone')} (${sent} ESC)`)
-    } catch (error) {
-      addLog('error', `${t('ubootInterruptFailed')}: ${stringifyError(error)}`)
-    } finally {
-      setIsUbootInterrupting(false)
-    }
-  }, [addLog, appendTerminalOutput, isConnected, startTerminalSession, t, terminalNewlineMode])
-
-  const runFailsafeInterruptSequence = useCallback(async (): Promise<void> => {
-    await runUbootInterruptSequence()
-
-    const connection = connectionRef.current
-    if (!connection || !isConnected || !isTerminalRunning) {
-      return
-    }
-
-    const newline = resolveLineEnding(terminalNewlineMode === 'none' ? 'crlf' : terminalNewlineMode)
-    const payload = `httpd${newline}`
-    const encoder = new TextEncoder()
-
-    addLog('info', t('failsafeInterruptRunning'))
-    try {
-      appendTerminalOutput(`\n> [${t('interruptIntoFailsafe')}] ${visualizeControlChars(payload)}\n`)
-      await sleepMs(120)
-      await connection.write(encoder.encode(payload))
-      addLog('success', t('failsafeInterruptDone'))
-    } catch (error) {
-      addLog('error', `${t('failsafeInterruptFailed')}: ${stringifyError(error)}`)
-    }
-  }, [addLog, appendTerminalOutput, isConnected, isTerminalRunning, runUbootInterruptSequence, t, terminalNewlineMode])
-
-  const handleInterruptIntoUboot = async (): Promise<void> => {
-    const connection = connectionRef.current
-    if (!connection || !isConnected) {
-      addLog('error', t('serialNotConnected'))
-      return
-    }
-
-    await runUbootInterruptSequence()
-  }
-
-  const handleInterruptIntoFailsafe = async (): Promise<void> => {
-    const connection = connectionRef.current
-    if (!connection || !isConnected) {
-      addLog('error', t('serialNotConnected'))
-      return
-    }
-
-    await runFailsafeInterruptSequence()
-  }
-
-  const handleTerminalInputKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
-    if (event.key === 'Enter' && !event.shiftKey) {
-      event.preventDefault()
-      if (terminalInput.length === 0) {
-        void sendTerminalSpecialKey('enter')
-      } else {
-        void handleSendTerminalInput()
-      }
-      return
-    }
-
-    const specialKey = mapKeyboardEventToSpecialKey(event.key)
-    if (!specialKey) {
-      return
-    }
-
-    event.preventDefault()
-    void sendTerminalSpecialKey(specialKey)
-  }
 
   const handleConnect = async (): Promise<void> => {
     if (!SerialConnection.isSupported()) {
