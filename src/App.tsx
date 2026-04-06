@@ -16,9 +16,27 @@ import {
 } from './constants'
 import type { Chip, DdrType, FirmwareCandidate, FirmwareSource, LogEntry, LogLevel } from './types'
 import { BUILTIN_BL2_CANDIDATES } from './data/builtinRamboot'
-import { candidateKey, formatCandidateLabel, parseFirmwareName } from './utils/fileNameParsers'
+import { candidateKey, formatCandidateLabel } from './utils/fileNameParsers'
 import { compareMd5, computeMd5 } from './utils/md5'
-import { downloadFirmwareCandidate, fetchReleaseCandidates, triggerBrowserFileDownload } from './utils/githubRelease'
+import { fetchReleaseCandidates, triggerBrowserFileDownload } from './utils/githubRelease'
+import { resolveBl2Selection, resolveFipSelection } from './utils/firmwareSelection'
+import { toNumber, sleepMs, stringifyError } from './utils/common'
+import {
+  applyTerminalChunk,
+  createTerminalScreenState,
+  resetTerminalScreenState,
+  type TerminalScreenState,
+} from './utils/terminalScreen'
+import {
+  buildSpecialKeyPayload,
+  formatSpecialKeyLabel,
+  mapKeyboardEventToSpecialKey,
+  resolveLineEnding,
+  visualizeControlChars,
+  type TerminalNewlineMode,
+  type TerminalSpecialKey,
+} from './utils/terminalControl'
+import { Md5Line } from './components/Md5Line'
 import { SerialConnection } from './services/serial/SerialConnection'
 import { MtkUartProtocol } from './services/serial/MtkUartProtocol'
 
@@ -74,7 +92,7 @@ function App() {
   const [terminalInput, setTerminalInput] = useState('')
   const [isTerminalRunning, setIsTerminalRunning] = useState(false)
   const [terminalAppendNewline, setTerminalAppendNewline] = useState(true)
-  const [terminalNewlineMode, setTerminalNewlineMode] = useState<'crlf' | 'lf' | 'cr' | 'none'>('crlf')
+  const [terminalNewlineMode, setTerminalNewlineMode] = useState<TerminalNewlineMode>('crlf')
   const [terminalRxBytes, setTerminalRxBytes] = useState(0)
   const [isUbootInterrupting, setIsUbootInterrupting] = useState(false)
   const [isTerminating, setIsTerminating] = useState(false)
@@ -1348,7 +1366,7 @@ function App() {
               />
               <select
                 value={terminalNewlineMode}
-                onChange={(event) => setTerminalNewlineMode(event.target.value as 'crlf' | 'lf' | 'cr' | 'none')}
+                onChange={(event) => setTerminalNewlineMode(event.target.value as TerminalNewlineMode)}
                 disabled={!isTerminalRunning || !terminalAppendNewline}
               >
                 <option value="crlf">{t('newlineCRLF')}</option>
@@ -1411,432 +1429,6 @@ function App() {
       </footer>
     </main>
   )
-}
-
-function Md5Line(props: {
-  expectedLabel: string
-  actualLabel: string
-  expected?: string
-  actual?: string
-  passed: boolean | null
-}) {
-  const { expectedLabel, actualLabel, expected, actual, passed } = props
-  return (
-    <div className="md5-line">
-      <div>
-        {expectedLabel}: <code>{expected ?? '-'}</code>
-      </div>
-      <div>
-        {actualLabel}: <code>{actual ?? '-'}</code>
-      </div>
-      {passed !== null && <div className={passed ? 'status ok' : 'status err'}>{passed ? '✔' : '✖'}</div>}
-    </div>
-  )
-}
-
-async function resolveBl2Selection(input: {
-  bl2Source: FirmwareSource
-  builtinBl2Options: FirmwareCandidate[]
-  selectedBuiltinBl2Key: string
-  releaseBl2Options: FirmwareCandidate[]
-  selectedReleaseBl2Key: string
-  uploadedBl2File: File | null
-  executionRemoteBl2Key?: string
-}): Promise<{ candidate: FirmwareCandidate; payload: ArrayBuffer }> {
-  const {
-    bl2Source,
-    builtinBl2Options,
-    selectedBuiltinBl2Key,
-    releaseBl2Options,
-    selectedReleaseBl2Key,
-    uploadedBl2File,
-    executionRemoteBl2Key,
-  } = input
-  if (bl2Source === 'builtin') {
-    const candidate = builtinBl2Options.find((item) => candidateKey(item) === selectedBuiltinBl2Key)
-    if (!candidate) {
-      throw new Error('BL2 built-in file is not selected')
-    }
-    return {
-      candidate,
-      payload: await downloadFirmwareCandidate(candidate),
-    }
-  }
-
-  if (bl2Source === 'github-release') {
-    const pickKey = executionRemoteBl2Key || selectedReleaseBl2Key
-    const candidate = releaseBl2Options.find((item) => candidateKey(item) === pickKey)
-    if (!candidate) {
-      throw new Error('BL2 release file is not selected')
-    }
-    return {
-      candidate,
-      payload: await downloadFirmwareCandidate(candidate),
-    }
-  }
-
-  if (!uploadedBl2File) {
-    throw new Error('BL2 upload file is required')
-  }
-
-  const parsed = parseFirmwareName(uploadedBl2File.name)
-  const candidate: FirmwareCandidate = parsed
-    ? { ...parsed, source: 'upload' }
-    : {
-      kind: 'bl2',
-      fileName: uploadedBl2File.name,
-      chip: null,
-      source: 'upload',
-    }
-
-  return {
-    candidate,
-    payload: await uploadedBl2File.arrayBuffer(),
-  }
-}
-
-async function resolveFipSelection(input: {
-  fipSource: Exclude<FirmwareSource, 'builtin'>
-  releaseFipOptions: FirmwareCandidate[]
-  selectedReleaseFipKey: string
-  uploadedFipFile: File | null
-  executionRemoteFipKey?: string
-}): Promise<{ candidate: FirmwareCandidate; payload: ArrayBuffer }> {
-  const { fipSource, releaseFipOptions, selectedReleaseFipKey, uploadedFipFile, executionRemoteFipKey } = input
-  if (fipSource === 'github-release') {
-    const pickKey = executionRemoteFipKey || selectedReleaseFipKey
-    const candidate = releaseFipOptions.find((item) => candidateKey(item) === pickKey)
-    if (!candidate) {
-      throw new Error('FIP release file is not selected')
-    }
-    return {
-      candidate,
-      payload: await downloadFirmwareCandidate(candidate),
-    }
-  }
-
-  if (!uploadedFipFile) {
-    throw new Error('FIP upload file is required')
-  }
-
-  const parsed = parseFirmwareName(uploadedFipFile.name)
-  const candidate: FirmwareCandidate = parsed
-    ? { ...parsed, source: 'upload' }
-    : {
-      kind: 'fip',
-      fileName: uploadedFipFile.name,
-      chip: null,
-      source: 'upload',
-    }
-
-  return {
-    candidate,
-    payload: await uploadedFipFile.arrayBuffer(),
-  }
-}
-
-function toNumber(value: string, fallback: number): number {
-  const parsed = Number(value)
-  if (Number.isFinite(parsed) && parsed > 0) {
-    return Math.floor(parsed)
-  }
-  return fallback
-}
-
-function resolveLineEnding(mode: 'crlf' | 'lf' | 'cr' | 'none'): string {
-  if (mode === 'crlf') {
-    return '\r\n'
-  }
-  if (mode === 'lf') {
-    return '\n'
-  }
-  if (mode === 'cr') {
-    return '\r'
-  }
-  return ''
-}
-
-function visualizeControlChars(value: string): string {
-  return value
-    .split('\u001b').join('\\x1b')
-    .replace(/\r/g, '\\r')
-    .replace(/\n/g, '\\n')
-    .replace(/\t/g, '\\t')
-}
-
-type TerminalScreenState = {
-  lines: string[]
-  cursorRow: number
-  cursorCol: number
-  parserMode: 'normal' | 'esc' | 'csi'
-  csiBuffer: string
-  maxLines: number
-}
-
-function createTerminalScreenState(maxLines = 600): TerminalScreenState {
-  return {
-    lines: [''],
-    cursorRow: 0,
-    cursorCol: 0,
-    parserMode: 'normal',
-    csiBuffer: '',
-    maxLines,
-  }
-}
-
-function resetTerminalScreenState(state: TerminalScreenState): void {
-  state.lines = ['']
-  state.cursorRow = 0
-  state.cursorCol = 0
-  state.parserMode = 'normal'
-  state.csiBuffer = ''
-}
-
-function applyTerminalChunk(state: TerminalScreenState, chunk: string): string {
-  for (const char of chunk) {
-    if (state.parserMode === 'normal') {
-      if (char === '\u001b') {
-        state.parserMode = 'esc'
-        continue
-      }
-      applyNormalChar(state, char)
-      continue
-    }
-
-    if (state.parserMode === 'esc') {
-      if (char === '[') {
-        state.parserMode = 'csi'
-        state.csiBuffer = ''
-        continue
-      }
-      state.parserMode = 'normal'
-      applyNormalChar(state, char)
-      continue
-    }
-
-    state.csiBuffer += char
-    if (isAnsiFinalByte(char)) {
-      applyCsiSequence(state, state.csiBuffer)
-      state.csiBuffer = ''
-      state.parserMode = 'normal'
-    }
-  }
-
-  trimTerminalLines(state)
-  return state.lines.join('\n')
-}
-
-function applyNormalChar(state: TerminalScreenState, char: string): void {
-  if (char === '\r') {
-    state.cursorCol = 0
-    return
-  }
-  if (char === '\n') {
-    state.cursorRow += 1
-    ensureLine(state, state.cursorRow)
-    state.cursorCol = 0
-    return
-  }
-  if (char === '\b') {
-    state.cursorCol = Math.max(0, state.cursorCol - 1)
-    return
-  }
-  if (char === '\t') {
-    for (let i = 0; i < 4; i += 1) {
-      putChar(state, ' ')
-    }
-    return
-  }
-  if (char < ' ' || char === '\u007f') {
-    return
-  }
-  putChar(state, char)
-}
-
-function applyCsiSequence(state: TerminalScreenState, sequence: string): void {
-  const command = sequence.at(-1)
-  if (!command) {
-    return
-  }
-
-  const paramsText = sequence.slice(0, -1)
-  const normalizedParamsText = paramsText.startsWith('?') ? paramsText.slice(1) : paramsText
-  const params = normalizedParamsText.split(';').map((part) => {
-    if (!part) {
-      return 0
-    }
-    const value = Number.parseInt(part, 10)
-    return Number.isFinite(value) ? value : 0
-  })
-
-  if (command === 'm' || command === 'h' || command === 'l') {
-    return
-  }
-
-  if (command === 'J') {
-    const mode = params[0] ?? 0
-    if (mode === 2) {
-      state.lines = ['']
-      state.cursorRow = 0
-      state.cursorCol = 0
-    }
-    return
-  }
-
-  if (command === 'K') {
-    const mode = params[0] ?? 0
-    ensureLine(state, state.cursorRow)
-    const line = state.lines[state.cursorRow]
-    if (mode === 2) {
-      state.lines[state.cursorRow] = ''
-      state.cursorCol = 0
-      return
-    }
-    if (mode === 1) {
-      state.lines[state.cursorRow] = line.slice(state.cursorCol)
-      state.cursorCol = 0
-      return
-    }
-    state.lines[state.cursorRow] = line.slice(0, state.cursorCol)
-    return
-  }
-
-  if (command === 'H' || command === 'f') {
-    const row = Math.max(1, params[0] || 1) - 1
-    const col = Math.max(1, params[1] || 1) - 1
-    state.cursorRow = row
-    state.cursorCol = col
-    ensureLine(state, state.cursorRow)
-    return
-  }
-
-  if (command === 'A') {
-    const offset = Math.max(1, params[0] || 1)
-    state.cursorRow = Math.max(0, state.cursorRow - offset)
-    return
-  }
-  if (command === 'B') {
-    const offset = Math.max(1, params[0] || 1)
-    state.cursorRow += offset
-    ensureLine(state, state.cursorRow)
-    return
-  }
-  if (command === 'C') {
-    const offset = Math.max(1, params[0] || 1)
-    state.cursorCol += offset
-    return
-  }
-  if (command === 'D') {
-    const offset = Math.max(1, params[0] || 1)
-    state.cursorCol = Math.max(0, state.cursorCol - offset)
-  }
-}
-
-function putChar(state: TerminalScreenState, char: string): void {
-  ensureLine(state, state.cursorRow)
-  const line = state.lines[state.cursorRow]
-  if (state.cursorCol >= line.length) {
-    const padding = ' '.repeat(state.cursorCol - line.length)
-    state.lines[state.cursorRow] = `${line}${padding}${char}`
-  } else {
-    state.lines[state.cursorRow] = `${line.slice(0, state.cursorCol)}${char}${line.slice(state.cursorCol + 1)}`
-  }
-  state.cursorCol += 1
-}
-
-function ensureLine(state: TerminalScreenState, row: number): void {
-  while (state.lines.length <= row) {
-    state.lines.push('')
-  }
-}
-
-function trimTerminalLines(state: TerminalScreenState): void {
-  const overflow = state.lines.length - state.maxLines
-  if (overflow <= 0) {
-    return
-  }
-  state.lines.splice(0, overflow)
-  state.cursorRow = Math.max(0, state.cursorRow - overflow)
-}
-
-function isAnsiFinalByte(char: string): boolean {
-  if (char.length === 0) {
-    return false
-  }
-  const code = char.charCodeAt(0)
-  return code >= 0x40 && code <= 0x7e
-}
-
-type TerminalSpecialKey = 'esc' | 'enter' | 'up' | 'down' | 'left' | 'right'
-
-function mapKeyboardEventToSpecialKey(key: string): TerminalSpecialKey | null {
-  if (key === 'Escape') {
-    return 'esc'
-  }
-  if (key === 'ArrowUp') {
-    return 'up'
-  }
-  if (key === 'ArrowDown') {
-    return 'down'
-  }
-  if (key === 'ArrowLeft') {
-    return 'left'
-  }
-  if (key === 'ArrowRight') {
-    return 'right'
-  }
-  return null
-}
-
-function buildSpecialKeyPayload(key: TerminalSpecialKey, newlineMode: 'crlf' | 'lf' | 'cr' | 'none'): string {
-  if (key === 'esc') {
-    return '\u001b'
-  }
-  if (key === 'enter') {
-    return resolveLineEnding(newlineMode === 'none' ? 'crlf' : newlineMode)
-  }
-  if (key === 'up') {
-    return '\u001b[A'
-  }
-  if (key === 'down') {
-    return '\u001b[B'
-  }
-  if (key === 'right') {
-    return '\u001b[C'
-  }
-  return '\u001b[D'
-}
-
-function formatSpecialKeyLabel(key: TerminalSpecialKey, t: (key: string) => string): string {
-  if (key === 'esc') {
-    return t('specialEsc')
-  }
-  if (key === 'enter') {
-    return t('specialEnter')
-  }
-  if (key === 'up') {
-    return t('specialArrowUp')
-  }
-  if (key === 'down') {
-    return t('specialArrowDown')
-  }
-  if (key === 'left') {
-    return t('specialArrowLeft')
-  }
-  return t('specialArrowRight')
-}
-
-function sleepMs(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms)
-  })
-}
-
-function stringifyError(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message
-  }
-  return String(error)
 }
 
 export default App
