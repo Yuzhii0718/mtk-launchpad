@@ -7,7 +7,6 @@ import {
   DEFAULT_BL2_RELEASE_API,
   DEFAULT_FIP_RELEASE_API,
   CHIP_CONFIG,
-  CHIP_OPTIONS,
   DDR_OPTIONS_BY_CHIP,
   GITHUB_PROJECT_URL,
   EEPROM_TOOL_URL,
@@ -16,7 +15,7 @@ import {
 } from './constants'
 import type { Chip, DdrType, FirmwareCandidate, FirmwareSource, LogEntry, LogLevel } from './types'
 import { BUILTIN_BL2_CANDIDATES } from './data/builtinRamboot'
-import { candidateKey, formatCandidateLabel } from './utils/fileNameParsers'
+import { candidateKey } from './utils/fileNameParsers'
 import { compareMd5, computeMd5 } from './utils/md5'
 import { fetchReleaseCandidates, triggerBrowserFileDownload } from './utils/githubRelease'
 import { resolveBl2Selection, resolveFipSelection } from './utils/firmwareSelection'
@@ -36,7 +35,9 @@ import {
   type TerminalNewlineMode,
   type TerminalSpecialKey,
 } from './utils/terminalControl'
-import { Md5Line } from './components/Md5Line'
+import { ConnectionSection } from './components/sections/ConnectionSection'
+import { FirmwareSection } from './components/sections/FirmwareSection'
+import { ConsoleSection } from './components/sections/ConsoleSection'
 import { SerialConnection } from './services/serial/SerialConnection'
 import { MtkUartProtocol } from './services/serial/MtkUartProtocol'
 
@@ -101,7 +102,6 @@ function App() {
   const logCounterRef = useRef(0)
   const terminalStopRequestedRef = useRef(false)
   const terminalLoopPromiseRef = useRef<Promise<void> | null>(null)
-  const terminalPanelRef = useRef<HTMLDivElement | null>(null)
   const terminateRequestedRef = useRef(false)
   const reconnectAfterTerminateRef = useRef(false)
   const terminalScreenRef = useRef<TerminalScreenState>(createTerminalScreenState())
@@ -260,17 +260,6 @@ function App() {
     }
     setTerminalOutput(next.slice(next.length - 200000))
   }, [])
-
-  useEffect(() => {
-    if (activeConsoleTab !== 'terminal') {
-      return
-    }
-    const panel = terminalPanelRef.current
-    if (!panel) {
-      return
-    }
-    panel.scrollTop = panel.scrollHeight
-  }, [activeConsoleTab, terminalOutput])
 
   const stopTerminalSession = useCallback(async (withLog: boolean): Promise<void> => {
     terminalStopRequestedRef.current = true
@@ -986,442 +975,109 @@ function App() {
         </div>
       </header>
 
-      <section className="card grid two-cols">
-        <div>
-          <h2>{t('connectTitle')}</h2>
-          <p className="hint">{t('webSerialLimit')}</p>
-          <div className="field-row">
-            <label>{t('detectedPort')}</label>
-            <input value={detectedPortInfo} readOnly />
-          </div>
-          <p className="hint">{t('detectedPortHint')}</p>
-          <div className="field-row">
-            <label>{t('baudRate')}</label>
-            <input
-              type="number"
-              value={connectBaudRate}
-              onChange={(event) => setConnectBaudRate(toNumber(event.target.value, 115200))}
-            />
-          </div>
-          <div className="button-row">
-            <button type="button" onClick={() => void handleConnect()} disabled={isConnected}>
-              {t('connect')}
-            </button>
-            <button type="button" onClick={() => void handleDisconnect()} disabled={!isConnected}>
-              {t('disconnect')}
-            </button>
-            <button type="button" onClick={() => void handleForgetDevice()} disabled={!isConnected || isRunning}>
-              {t('forgetDevice')}
-            </button>
-          </div>
-          <p className={`status ${isConnected ? 'ok' : 'warn'}`}>
-            {isConnected ? t('connected') : t('disconnected')}
-          </p>
-        </div>
+      <ConnectionSection
+        detectedPortInfo={detectedPortInfo}
+        connectBaudRate={connectBaudRate}
+        isConnected={isConnected}
+        isRunning={isRunning}
+        chip={chip}
+        ddr={ddr}
+        ddrOptions={ddrOptions}
+        loadAddress={loadAddress}
+        bromLoadBaudRate={bromLoadBaudRate}
+        bl2LoadBaudRate={bl2LoadBaudRate}
+        onConnectBaudRateInput={(value) => setConnectBaudRate(toNumber(value, 115200))}
+        onChipChange={setChip}
+        onDdrChange={setDdr}
+        onLoadAddressInput={(value) => setLoadAddress(toNumber(value, CHIP_CONFIG[chip].defaultLoadAddress))}
+        onBromBaudRateInput={(value) => setBromLoadBaudRate(toNumber(value, 115200))}
+        onBl2BaudRateInput={(value) => setBl2LoadBaudRate(toNumber(value, 115200))}
+        onConnect={handleConnect}
+        onDisconnect={handleDisconnect}
+        onForgetDevice={handleForgetDevice}
+      />
 
-        <div>
-          <h2>{t('firmwareLabel')}</h2>
-          <div className="field-row">
-            <label>{t('chip')}</label>
-            <select value={chip} onChange={(event) => setChip(event.target.value as Chip)}>
-              {CHIP_OPTIONS.map((option) => (
-                <option key={option} value={option}>
-                  {CHIP_CONFIG[option].label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="field-row">
-            <label>{t('ddr')}</label>
-            <select value={ddr} onChange={(event) => setDdr(event.target.value as DdrType)}>
-              {ddrOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option.toUpperCase()}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="field-row">
-            <label>{t('loadAddress')}</label>
-            <input
-              type="number"
-              value={loadAddress}
-              onChange={(event) => setLoadAddress(toNumber(event.target.value, CHIP_CONFIG[chip].defaultLoadAddress))}
-            />
-          </div>
-          <div className="field-row">
-            <label>{t('bromBaudRate')}</label>
-            <input
-              type="number"
-              value={bromLoadBaudRate}
-              onChange={(event) => setBromLoadBaudRate(toNumber(event.target.value, 115200))}
-            />
-          </div>
-          <div className="field-row">
-            <label>{t('bl2BaudRate')}</label>
-            <input
-              type="number"
-              value={bl2LoadBaudRate}
-              onChange={(event) => setBl2LoadBaudRate(toNumber(event.target.value, 115200))}
-            />
-          </div>
-        </div>
-      </section>
+      <FirmwareSection
+        loadMode={loadMode}
+        bl2Source={bl2Source}
+        fipSource={fipSource}
+        bl2ReleaseApi={bl2ReleaseApi}
+        bl2ReleaseTag={bl2ReleaseTag}
+        isLoadingBl2Release={isLoadingBl2Release}
+        fipReleaseApi={fipReleaseApi}
+        fipReleaseTag={fipReleaseTag}
+        isLoadingFipRelease={isLoadingFipRelease}
+        boardFilter={boardFilter}
+        builtinBl2Options={builtinBl2Options}
+        releaseBl2Options={releaseBl2Options}
+        releaseFipOptions={releaseFipOptions}
+        selectedBuiltinBl2Key={selectedBuiltinBl2Key}
+        selectedReleaseBl2Key={selectedReleaseBl2Key}
+        selectedExecutionRemoteBl2Candidate={selectedExecutionRemoteBl2Candidate}
+        selectedReleaseFipKey={selectedReleaseFipKey}
+        selectedExecutionRemoteFipCandidate={selectedExecutionRemoteFipCandidate}
+        canDownloadRambootPreloader={canDownloadRambootPreloader}
+        canUseRemoteBl2ForExecution={canUseRemoteBl2ForExecution}
+        canDownloadBoardBl2={canDownloadBoardBl2}
+        canDownloadFip={canDownloadFip}
+        canUseRemoteFipForExecution={canUseRemoteFipForExecution}
+        bl2ExpectedMd5={bl2ExpectedMd5}
+        bl2ActualMd5={bl2ActualMd5}
+        bl2Md5Passed={bl2Md5Passed}
+        fipExpectedMd5={fipExpectedMd5}
+        fipActualMd5={fipActualMd5}
+        fipMd5Passed={fipMd5Passed}
+        onLoadModeChange={setLoadMode}
+        onBl2SourceChange={setBl2Source}
+        onBl2ReleaseApiChange={setBl2ReleaseApi}
+        onFetchBl2Release={handleFetchBl2Release}
+        onSelectedBuiltinBl2KeyChange={setSelectedBuiltinBl2Key}
+        onSelectedReleaseBl2KeyChange={setSelectedReleaseBl2Key}
+        onUseRemoteBl2ForExecution={handleUseRemoteBl2ForExecution}
+        onDownloadRambootPreloader={handleDownloadRambootPreloader}
+        onUploadedBl2FileChange={setUploadedBl2File}
+        onRunBl2Md5Check={() => runBl2Md5Check(true)}
+        onFipSourceChange={setFipSource}
+        onFipReleaseApiChange={setFipReleaseApi}
+        onBoardFilterChange={setBoardFilter}
+        onFetchFipRelease={handleFetchFipRelease}
+        onSelectedReleaseFipKeyChange={setSelectedReleaseFipKey}
+        onUseRemoteFipForExecution={handleUseRemoteFipForExecution}
+        onDownloadBoardBl2={handleDownloadBoardBl2}
+        onDownloadFip={handleDownloadFip}
+        onUploadedFipFileChange={setUploadedFipFile}
+        onRunFipMd5Check={() => runFipMd5Check(true)}
+      />
 
-      <section className={`card grid ${loadMode === 'bl2-fip' ? 'two-cols' : ''}`}>
-        <div>
-          <h2>{t('rambootBl2Source')}</h2>
-          <div className="field-row">
-            <label>{t('loadMode')}</label>
-            <select value={loadMode} onChange={(event) => setLoadMode(event.target.value as 'bl2-only' | 'bl2-fip')}>
-              <option value="bl2-only">{t('bl2Only')}</option>
-              <option value="bl2-fip">{t('bl2AndFip')}</option>
-            </select>
-          </div>
-
-          <div className="field-row">
-            <label>{t('rambootBl2Source')}</label>
-            <select value={bl2Source} onChange={(event) => setBl2Source(event.target.value as FirmwareSource)}>
-              <option value="builtin">{t('builtin')}</option>
-              <option value="github-release">{t('githubRelease')}</option>
-              <option value="upload">{t('uploadLocal')}</option>
-            </select>
-          </div>
-
-          {bl2Source === 'builtin' && (
-            <div className="field-row">
-              <label>{t('chooseBl2')}</label>
-              <select
-                className="candidate-select"
-                value={selectedBuiltinBl2Key}
-                onChange={(event) => setSelectedBuiltinBl2Key(event.target.value)}
-              >
-                {builtinBl2Options.map((candidate) => (
-                  <option key={candidateKey(candidate)} value={candidateKey(candidate)}>
-                    {formatCandidateLabel(candidate)}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {bl2Source === 'github-release' && (
-            <>
-              <div className="field-row">
-                <label>{t('bl2ReleaseApi')}</label>
-                <input value={bl2ReleaseApi} onChange={(event) => setBl2ReleaseApi(event.target.value)} />
-              </div>
-              <div className="button-row">
-                <button type="button" onClick={() => void handleFetchBl2Release()} disabled={isLoadingBl2Release}>
-                  {t('fetchBl2Release')}
-                </button>
-              </div>
-              <p className="hint">{t('releaseTag')}: {bl2ReleaseTag}</p>
-              <div className="field-row">
-                <label>{t('chooseBl2')}</label>
-                <select
-                  className="candidate-select"
-                  value={selectedReleaseBl2Key}
-                  onChange={(event) => setSelectedReleaseBl2Key(event.target.value)}
-                >
-                  {releaseBl2Options.map((candidate) => (
-                    <option key={candidateKey(candidate)} value={candidateKey(candidate)}>
-                      {formatCandidateLabel(candidate)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="button-row">
-                <button
-                  type="button"
-                  onClick={() => void handleUseRemoteBl2ForExecution()}
-                  disabled={!canUseRemoteBl2ForExecution}
-                >
-                  {t('useRemoteBl2ForRun')}
-                </button>
-              </div>
-              {!selectedExecutionRemoteBl2Candidate && <p className="hint hint-warning">{t('remoteBl2NotSelectedForRun')}</p>}
-              {selectedExecutionRemoteBl2Candidate && (
-                <p className="hint">{t('remoteBl2InUse')}: {selectedExecutionRemoteBl2Candidate.fileName}</p>
-              )}
-              <div className="button-row">
-                <button
-                  type="button"
-                  onClick={() => void handleDownloadRambootPreloader()}
-                  disabled={!canDownloadRambootPreloader}
-                >
-                  {t('downloadRambootPreloaderToLocal')}
-                </button>
-              </div>
-              {!canDownloadRambootPreloader && <p className="hint hint-warning">{t('noSelectedBl2DownloadHint')}</p>}
-              <p className="hint">{t('downloadUsesBrowserHint')}</p>
-            </>
-          )}
-
-          {bl2Source === 'upload' && (
-            <div className="field-row">
-              <label>{t('uploadLocal')}</label>
-              <input
-                type="file"
-                onChange={(event) => setUploadedBl2File(event.target.files?.[0] ?? null)}
-                accept=".bin,.img"
-              />
-            </div>
-          )}
-
-          <div className="button-row">
-            <button type="button" onClick={() => void runBl2Md5Check(true)}>
-              {t('verifyMd5')} (BL2)
-            </button>
-          </div>
-          <p className="hint">{t('autoVerifyHint')}</p>
-          <Md5Line
-            expectedLabel={t('expectedMd5')}
-            actualLabel={t('actualMd5')}
-            expected={bl2ExpectedMd5}
-            actual={bl2ActualMd5}
-            passed={bl2Md5Passed}
-          />
-        </div>
-
-        {loadMode === 'bl2-fip' && (
-          <div>
-            <h2>{t('fipSource')}</h2>
-            <div className="field-row">
-              <label>{t('fipSource')}</label>
-              <select value={fipSource} onChange={(event) => setFipSource(event.target.value as Exclude<FirmwareSource, 'builtin'>)}>
-                <option value="github-release">{t('githubRelease')}</option>
-                <option value="upload">{t('uploadLocal')}</option>
-              </select>
-            </div>
-
-            {fipSource === 'github-release' && (
-              <>
-                <div className="field-row">
-                  <label>{t('fipReleaseApi')}</label>
-                  <input value={fipReleaseApi} onChange={(event) => setFipReleaseApi(event.target.value)} />
-                </div>
-                <div className="field-row">
-                  <label>{t('boardFilter')}</label>
-                  <input value={boardFilter} onChange={(event) => setBoardFilter(event.target.value)} placeholder={t('boardFilterPlaceholder')} />
-                </div>
-                <div className="button-row">
-                  <button type="button" onClick={() => void handleFetchFipRelease()} disabled={isLoadingFipRelease}>
-                    {t('fetchFipRelease')}
-                  </button>
-                </div>
-                <p className="hint">{t('releaseTag')}: {fipReleaseTag}</p>
-
-                <div className="field-row">
-                  <label>{t('chooseFip')}</label>
-                  <select
-                    className="candidate-select"
-                    value={selectedReleaseFipKey}
-                    onChange={(event) => setSelectedReleaseFipKey(event.target.value)}
-                  >
-                    {releaseFipOptions.map((candidate) => (
-                      <option key={candidateKey(candidate)} value={candidateKey(candidate)}>
-                        {formatCandidateLabel(candidate)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="button-row">
-                  <button
-                    type="button"
-                    onClick={() => void handleUseRemoteFipForExecution()}
-                    disabled={!canUseRemoteFipForExecution}
-                  >
-                    {t('useRemoteFipForRun')}
-                  </button>
-                </div>
-                {!selectedExecutionRemoteFipCandidate && <p className="hint hint-warning">{t('remoteFipNotSelectedForRun')}</p>}
-                {selectedExecutionRemoteFipCandidate && (
-                  <p className="hint">{t('remoteFipInUse')}: {selectedExecutionRemoteFipCandidate.fileName}</p>
-                )}
-
-                <div className="button-row">
-                  <button
-                    type="button"
-                    onClick={() => void handleDownloadBoardBl2()}
-                    disabled={!canDownloadBoardBl2}
-                  >
-                    {t('downloadBl2ToLocal')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleDownloadFip()}
-                    disabled={!canDownloadFip}
-                  >
-                    {t('downloadFipToLocal')}
-                  </button>
-                </div>
-                {!canDownloadBoardBl2 && <p className="hint hint-warning">{t('noMatchedBoardBl2')}</p>}
-                {!canDownloadFip && <p className="hint hint-warning">{t('noSelectedFipDownloadHint')}</p>}
-                <p className="hint">{t('downloadUsesBrowserHint')}</p>
-              </>
-            )}
-
-            {fipSource === 'upload' && (
-              <div className="field-row">
-                <label>{t('uploadLocal')}</label>
-                <input
-                  type="file"
-                  onChange={(event) => setUploadedFipFile(event.target.files?.[0] ?? null)}
-                  accept=".bin,.img"
-                />
-              </div>
-            )}
-
-            <div className="button-row">
-              <button type="button" onClick={() => void runFipMd5Check(true)}>
-                {t('verifyMd5')} (FIP)
-              </button>
-            </div>
-            <p className="hint">{t('autoVerifyHint')}</p>
-            <Md5Line
-              expectedLabel={t('expectedMd5')}
-              actualLabel={t('actualMd5')}
-              expected={fipExpectedMd5}
-              actual={fipActualMd5}
-              passed={fipMd5Passed}
-            />
-          </div>
-        )}
-      </section>
-
-      <section className="card">
-        <div className="button-row">
-          <button type="button" onClick={() => void runWorkflow()} disabled={!isConnected || isRunning}>
-            {isRunning ? t('running') : t('startFlash')}
-          </button>
-          <button type="button" onClick={() => void handleTerminateExecution()} disabled={!isRunning || isTerminating}>
-            {t('terminateExecution')}
-          </button>
-          <button type="button" onClick={clearLogs} disabled={activeConsoleTab !== 'logs'}>{t('clearLogs')}</button>
-        </div>
-
-        <div className="button-row">
-          <button
-            type="button"
-            className={`tab-button ${activeConsoleTab === 'logs' ? 'active' : ''}`}
-            onClick={() => setActiveConsoleTab('logs')}
-          >
-            {t('logs')}
-          </button>
-          <button
-            type="button"
-            className={`tab-button ${activeConsoleTab === 'terminal' ? 'active' : ''}`}
-            onClick={() => setActiveConsoleTab('terminal')}
-          >
-            {t('terminal')}
-          </button>
-          <button
-            type="button"
-            onClick={() => void startTerminalSession(true)}
-            disabled={!isConnected || isRunning || isTerminalRunning}
-          >
-            {t('startTerminal')}
-          </button>
-          <button
-            type="button"
-            onClick={() => void stopTerminalSession(true)}
-            disabled={!isTerminalRunning}
-          >
-            {t('stopTerminal')}
-          </button>
-        </div>
-
-        {activeConsoleTab === 'logs' && (
-          <>
-            <h2>{t('logs')}</h2>
-            <div className="log-panel">
-              {logs.map((entry) => (
-                <div key={entry.id} className={`log-line ${entry.level}`}>
-                  [{entry.timestamp}] {entry.message}
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-
-        {activeConsoleTab === 'terminal' && (
-          <>
-            <h2>{t('terminal')}</h2>
-            <div className="terminal-meta-row">
-              <span>{t('terminalRxBytes')}: {terminalRxBytes}</span>
-              <button type="button" onClick={clearTerminalOutput}>{t('terminalClear')}</button>
-            </div>
-            <div className="terminal-panel" ref={terminalPanelRef}>
-              {terminalOutput || t('terminalNoOutput')}
-            </div>
-            <div className="terminal-input-row">
-              <input
-                value={terminalInput}
-                onChange={(event) => setTerminalInput(event.target.value)}
-                onKeyDown={handleTerminalInputKeyDown}
-                placeholder={t('terminalInputPlaceholder')}
-                disabled={!isTerminalRunning}
-              />
-              <select
-                value={terminalNewlineMode}
-                onChange={(event) => setTerminalNewlineMode(event.target.value as TerminalNewlineMode)}
-                disabled={!isTerminalRunning || !terminalAppendNewline}
-              >
-                <option value="crlf">{t('newlineCRLF')}</option>
-                <option value="lf">{t('newlineLF')}</option>
-                <option value="cr">{t('newlineCR')}</option>
-                <option value="none">{t('newlineNone')}</option>
-              </select>
-              <label className="terminal-toggle">
-                <input
-                  type="checkbox"
-                  checked={terminalAppendNewline}
-                  onChange={(event) => setTerminalAppendNewline(event.target.checked)}
-                  disabled={!isTerminalRunning}
-                />
-                {t('terminalAppendNewline')}
-              </label>
-              <button
-                type="button"
-                onClick={() => void handleSendTerminalInput()}
-                disabled={!isTerminalRunning || !terminalInput.trim()}
-              >
-                {t('terminalSend')}
-              </button>
-            </div>
-            <div className="terminal-special-row">
-              <span>{t('terminalSpecialActions')}:</span>
-              <button type="button" onClick={() => void sendTerminalSpecialKey('esc')} disabled={!isTerminalRunning}>{t('specialEsc')}</button>
-              <button type="button" onClick={() => void sendTerminalSpecialKey('enter')} disabled={!isTerminalRunning}>{t('specialEnter')}</button>
-              <button type="button" onClick={() => void sendTerminalSpecialKey('up')} disabled={!isTerminalRunning}>{t('specialArrowUp')}</button>
-              <button type="button" onClick={() => void sendTerminalSpecialKey('down')} disabled={!isTerminalRunning}>{t('specialArrowDown')}</button>
-              <button type="button" onClick={() => void sendTerminalSpecialKey('left')} disabled={!isTerminalRunning}>{t('specialArrowLeft')}</button>
-              <button type="button" onClick={() => void sendTerminalSpecialKey('right')} disabled={!isTerminalRunning}>{t('specialArrowRight')}</button>
-            </div>
-            {isTerminalRunning && (
-              <div className="terminal-interrupt-row">
-                <button
-                  type="button"
-                  onClick={() => void handleInterruptIntoUboot()}
-                  disabled={isUbootInterrupting || isTerminating}
-                >
-                  {isUbootInterrupting ? t('ubootInterrupting') : t('interruptIntoUboot')}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleInterruptIntoFailsafe()}
-                  disabled={isUbootInterrupting || isTerminating}
-                >
-                  {t('interruptIntoFailsafe')}
-                </button>
-              </div>
-            )}
-            <p className="hint">{isTerminalRunning ? t('terminalRunningHint') : t('terminalStoppedHint')}</p>
-          </>
-        )}
-      </section>
+      <ConsoleSection
+        isConnected={isConnected}
+        isRunning={isRunning}
+        isTerminating={isTerminating}
+        activeConsoleTab={activeConsoleTab}
+        logs={logs}
+        terminalOutput={terminalOutput}
+        terminalInput={terminalInput}
+        isTerminalRunning={isTerminalRunning}
+        terminalAppendNewline={terminalAppendNewline}
+        terminalNewlineMode={terminalNewlineMode}
+        terminalRxBytes={terminalRxBytes}
+        isUbootInterrupting={isUbootInterrupting}
+        onRunWorkflow={runWorkflow}
+        onTerminateExecution={handleTerminateExecution}
+        onClearLogs={clearLogs}
+        onActiveConsoleTabChange={setActiveConsoleTab}
+        onStartTerminal={() => startTerminalSession(true)}
+        onStopTerminal={() => stopTerminalSession(true)}
+        onClearTerminalOutput={clearTerminalOutput}
+        onTerminalInputChange={setTerminalInput}
+        onTerminalInputKeyDown={handleTerminalInputKeyDown}
+        onTerminalNewlineModeChange={setTerminalNewlineMode}
+        onTerminalAppendNewlineChange={setTerminalAppendNewline}
+        onSendTerminalInput={handleSendTerminalInput}
+        onSendTerminalSpecialKey={sendTerminalSpecialKey}
+        onInterruptIntoUboot={handleInterruptIntoUboot}
+        onInterruptIntoFailsafe={handleInterruptIntoFailsafe}
+      />
 
       <footer className="card footer">
         <span>{t('appVersionLabel')}: {APP_VERSION}</span>
