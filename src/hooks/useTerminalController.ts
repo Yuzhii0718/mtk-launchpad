@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent, MutableRefObject } from 'react'
 import type { LogLevel } from '../types'
 import { sleepMs, stringifyError } from '../utils/common'
@@ -29,6 +29,10 @@ type UseTerminalControllerParams = {
   getText: (key: string) => string
 }
 
+const TERMINAL_MAX_OUTPUT_CHARS = 200000
+const TERMINAL_READ_TIMEOUT_MS = 300
+const TERMINAL_READ_CHUNK_BYTES = 4096
+
 export function useTerminalController(input: UseTerminalControllerParams) {
   const { connectionRef, isConnected, isRunning, addLog, getText } = input
 
@@ -44,6 +48,63 @@ export function useTerminalController(input: UseTerminalControllerParams) {
   const terminalStopRequestedRef = useRef(false)
   const terminalLoopPromiseRef = useRef<Promise<void> | null>(null)
   const terminalScreenRef = useRef<TerminalScreenState>(createTerminalScreenState())
+  const pendingUiFrameRef = useRef<number | null>(null)
+  const pendingUiChunkRef = useRef('')
+
+  const appendTerminalOutput = useCallback((chunk: string): void => {
+    if (!chunk) {
+      return
+    }
+
+    const normalized = applyTerminalChunk(terminalScreenRef.current, chunk)
+    if (normalized.length <= TERMINAL_MAX_OUTPUT_CHARS) {
+      setTerminalOutput(normalized)
+      return
+    }
+
+    setTerminalOutput(normalized.slice(normalized.length - TERMINAL_MAX_OUTPUT_CHARS))
+  }, [])
+
+  const flushPendingTerminalOutput = useCallback((): void => {
+    const chunk = pendingUiChunkRef.current
+    if (!chunk) {
+      return
+    }
+
+    pendingUiChunkRef.current = ''
+    appendTerminalOutput(chunk)
+  }, [appendTerminalOutput])
+
+  const cancelPendingUiFrame = useCallback((): void => {
+    if (pendingUiFrameRef.current !== null) {
+      cancelAnimationFrame(pendingUiFrameRef.current)
+      pendingUiFrameRef.current = null
+    }
+  }, [])
+
+  const scheduleAppendTerminalOutput = useCallback((chunk: string): void => {
+    if (!chunk) {
+      return
+    }
+
+    pendingUiChunkRef.current += chunk
+    if (pendingUiFrameRef.current !== null) {
+      return
+    }
+
+    pendingUiFrameRef.current = requestAnimationFrame(() => {
+      pendingUiFrameRef.current = null
+      flushPendingTerminalOutput()
+    })
+  }, [flushPendingTerminalOutput])
+
+  useEffect(() => {
+    return () => {
+      terminalStopRequestedRef.current = true
+      cancelPendingUiFrame()
+      pendingUiChunkRef.current = ''
+    }
+  }, [cancelPendingUiFrame])
 
   const clearTerminalOutput = useCallback((): void => {
     resetTerminalScreenState(terminalScreenRef.current)
@@ -51,31 +112,22 @@ export function useTerminalController(input: UseTerminalControllerParams) {
     setTerminalRxBytes(0)
   }, [])
 
-  const appendTerminalOutput = useCallback((chunk: string): void => {
-    if (!chunk) {
-      return
-    }
-    const normalized = applyTerminalChunk(terminalScreenRef.current, chunk)
-    const next = normalized
-    if (next.length <= 200000) {
-      setTerminalOutput(next)
-      return
-    }
-    setTerminalOutput(next.slice(next.length - 200000))
-  }, [])
-
   const stopTerminalSession = useCallback(async (withLog: boolean): Promise<void> => {
     terminalStopRequestedRef.current = true
+    cancelPendingUiFrame()
+    flushPendingTerminalOutput()
+
     const loop = terminalLoopPromiseRef.current
     if (loop) {
       await loop.catch(() => undefined)
     }
+
     terminalLoopPromiseRef.current = null
     setIsTerminalRunning(false)
     if (withLog) {
       addLog('info', getText('terminalStopped'))
     }
-  }, [addLog, getText])
+  }, [addLog, cancelPendingUiFrame, flushPendingTerminalOutput, getText])
 
   const startTerminalSession = useCallback(async (withLog: boolean): Promise<void> => {
     const connection = connectionRef.current
@@ -103,13 +155,19 @@ export function useTerminalController(input: UseTerminalControllerParams) {
       try {
         while (!terminalStopRequestedRef.current) {
           try {
-            const bytes = await connection.readExact(1, 300)
+            const bytes = await connection.readSome(TERMINAL_READ_TIMEOUT_MS, TERMINAL_READ_CHUNK_BYTES)
+            if (!bytes.length) {
+              continue
+            }
+
             setTerminalRxBytes((prev) => prev + bytes.length)
-            appendTerminalOutput(decoder.decode(bytes, { stream: true }))
+            const chunk = decoder.decode(bytes, { stream: true })
+            scheduleAppendTerminalOutput(chunk)
           } catch (error) {
             if (terminalStopRequestedRef.current) {
               break
             }
+
             const message = stringifyError(error)
             if (message.toLowerCase().includes('timeout')) {
               continue
@@ -117,17 +175,22 @@ export function useTerminalController(input: UseTerminalControllerParams) {
             throw error
           }
         }
+
+        const remain = decoder.decode()
+        scheduleAppendTerminalOutput(remain)
       } catch (error) {
         addLog('error', `${getText('terminalReadFailed')}: ${stringifyError(error)}`)
       } finally {
+        flushPendingTerminalOutput()
         terminalLoopPromiseRef.current = null
         setIsTerminalRunning(false)
       }
     })()
-  }, [addLog, appendTerminalOutput, connectionRef, getText, isConnected, isRunning])
+  }, [addLog, connectionRef, flushPendingTerminalOutput, getText, isConnected, isRunning, scheduleAppendTerminalOutput])
 
   const handleSendTerminalInput = useCallback(async (): Promise<void> => {
     const connection = connectionRef.current
+
     const raw = terminalInput
     if (!connection || !isConnected) {
       addLog('error', getText('serialNotConnected'))
@@ -295,6 +358,25 @@ export function useTerminalController(input: UseTerminalControllerParams) {
     void sendTerminalSpecialKey(specialKey)
   }, [handleSendTerminalInput, sendTerminalSpecialKey, terminalInput])
 
+  const saveTerminalOutputToFile = useCallback((): void => {
+    if (!terminalOutput.trim().length) {
+      addLog('warn', getText('terminalNoOutput'))
+      return
+    }
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+    const blob = new Blob([terminalOutput], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = `terminal-${timestamp}.log`
+    document.body.appendChild(anchor)
+    anchor.click()
+    document.body.removeChild(anchor)
+    URL.revokeObjectURL(url)
+    addLog('success', getText('terminalSaved'))
+  }, [addLog, getText, terminalOutput])
+
   return {
     activeConsoleTab,
     setActiveConsoleTab,
@@ -309,6 +391,7 @@ export function useTerminalController(input: UseTerminalControllerParams) {
     terminalRxBytes,
     isUbootInterrupting,
     clearTerminalOutput,
+    saveTerminalOutputToFile,
     stopTerminalSession,
     startTerminalSession,
     handleSendTerminalInput,

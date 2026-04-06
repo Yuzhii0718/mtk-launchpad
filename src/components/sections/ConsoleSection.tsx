@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { LogEntry } from '../../types'
@@ -26,6 +26,7 @@ type ConsoleSectionProps = {
   onStartTerminal: () => Promise<void>
   onStopTerminal: () => Promise<void>
   onClearTerminalOutput: () => void
+  onSaveTerminalOutput: () => void
   onTerminalInputChange: (value: string) => void
   onTerminalInputKeyDown: (event: KeyboardEvent<HTMLInputElement>) => void
   onTerminalNewlineModeChange: (value: TerminalNewlineMode) => void
@@ -38,7 +39,10 @@ type ConsoleSectionProps = {
 
 export function ConsoleSection(props: ConsoleSectionProps) {
   const { t } = useTranslation()
+  const logsPanelRef = useRef<HTMLDivElement | null>(null)
   const terminalPanelRef = useRef<HTMLDivElement | null>(null)
+  const shouldFollowLogsRef = useRef(true)
+  const shouldFollowTerminalRef = useRef(true)
 
   const {
     isConnected,
@@ -60,6 +64,7 @@ export function ConsoleSection(props: ConsoleSectionProps) {
     onStartTerminal,
     onStopTerminal,
     onClearTerminalOutput,
+    onSaveTerminalOutput,
     onTerminalInputChange,
     onTerminalInputKeyDown,
     onTerminalNewlineModeChange,
@@ -70,12 +75,43 @@ export function ConsoleSection(props: ConsoleSectionProps) {
     onInterruptIntoFailsafe,
   } = props
 
+  const isNearBottom = useCallback((panel: HTMLDivElement): boolean => {
+    return panel.scrollHeight - panel.scrollTop - panel.clientHeight <= 24
+  }, [])
+
+  const handleLogsPanelScroll = useCallback((): void => {
+    const panel = logsPanelRef.current
+    if (!panel) {
+      return
+    }
+    shouldFollowLogsRef.current = isNearBottom(panel)
+  }, [isNearBottom])
+
+  const handleTerminalPanelScroll = useCallback((): void => {
+    const panel = terminalPanelRef.current
+    if (!panel) {
+      return
+    }
+    shouldFollowTerminalRef.current = isNearBottom(panel)
+  }, [isNearBottom])
+
+  useEffect(() => {
+    if (activeConsoleTab !== 'logs') {
+      return
+    }
+    const panel = logsPanelRef.current
+    if (!panel || !shouldFollowLogsRef.current) {
+      return
+    }
+    panel.scrollTop = panel.scrollHeight
+  }, [activeConsoleTab, logs])
+
   useEffect(() => {
     if (activeConsoleTab !== 'terminal') {
       return
     }
     const panel = terminalPanelRef.current
-    if (!panel) {
+    if (!panel || !shouldFollowTerminalRef.current) {
       return
     }
     panel.scrollTop = panel.scrollHeight
@@ -127,7 +163,7 @@ export function ConsoleSection(props: ConsoleSectionProps) {
       {activeConsoleTab === 'logs' && (
         <>
           <h2>{t('logs')}</h2>
-          <div className="log-panel">
+          <div className="log-panel" ref={logsPanelRef} onScroll={handleLogsPanelScroll}>
             {logs.map((entry) => (
               <div key={entry.id} className={`log-line ${entry.level}`}>
                 [{entry.timestamp}] {entry.message}
@@ -143,8 +179,9 @@ export function ConsoleSection(props: ConsoleSectionProps) {
           <div className="terminal-meta-row">
             <span>{t('terminalRxBytes')}: {terminalRxBytes}</span>
             <button type="button" onClick={onClearTerminalOutput}>{t('terminalClear')}</button>
+            <button type="button" onClick={onSaveTerminalOutput}>{t('terminalSave')}</button>
           </div>
-          <div className="terminal-panel" ref={terminalPanelRef}>
+          <div className="terminal-panel" ref={terminalPanelRef} onScroll={handleTerminalPanelScroll}>
             {terminalOutput || t('terminalNoOutput')}
           </div>
           <div className="terminal-input-row">

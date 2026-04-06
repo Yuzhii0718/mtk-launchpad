@@ -133,6 +133,7 @@ function App() {
     terminalRxBytes,
     isUbootInterrupting,
     clearTerminalOutput,
+    saveTerminalOutputToFile,
     stopTerminalSession,
     startTerminalSession,
     handleSendTerminalInput,
@@ -302,6 +303,7 @@ function App() {
         onStartTerminal={() => startTerminalSession(true)}
         onStopTerminal={() => stopTerminalSession(true)}
         onClearTerminalOutput={clearTerminalOutput}
+        onSaveTerminalOutput={saveTerminalOutputToFile}
         onTerminalInputChange={setTerminalInput}
         onTerminalInputKeyDown={handleTerminalInputKeyDown}
         onTerminalNewlineModeChange={setTerminalNewlineMode}

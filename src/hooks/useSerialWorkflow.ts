@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from 'react'
 import type { MutableRefObject } from 'react'
 import { CHIP_CONFIG } from '../constants'
 import type { Chip, LogLevel } from '../types'
-import { stringifyError } from '../utils/common'
+import { sleepMs, stringifyError } from '../utils/common'
 import { SerialConnection } from '../services/serial/SerialConnection'
 import { MtkUartProtocol } from '../services/serial/MtkUartProtocol'
 
@@ -182,11 +182,16 @@ export function useSerialWorkflow(input: UseSerialWorkflowParams) {
       terminateRequestedRef.current = false
       setIsRunning(false)
       setIsTerminating(false)
+
       if (terminated) {
         await reconnectSerialAfterTerminate()
-      } else if (connectionRef.current?.isOpen && terminalActionsRef.current) {
-        terminalActionsRef.current.setActiveConsoleTab('terminal')
-        await terminalActionsRef.current.startTerminalSession(true)
+      } else if (connectionRef.current?.isOpen) {
+        await sleepMs(16)
+        const terminalActions = terminalActionsRef.current
+        if (terminalActions) {
+          terminalActions.setActiveConsoleTab('terminal')
+          await terminalActions.startTerminalSession(true)
+        }
       }
     }
   }, [
