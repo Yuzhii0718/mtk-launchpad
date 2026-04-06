@@ -193,11 +193,36 @@ export class MtkUartProtocol {
     const status = await this.readBe16()
     ensureStatus(status, 'send_da_prepare')
 
-    await this.serial.write(payload)
+    this.log('info', `Payload transfer start: ${formatByteSize(payload.length)}`)
+    await this.sendDaPayload(payload)
     const checksum = await this.readBe16()
     const endStatus = await this.readBe16()
     ensureStatus(endStatus, 'send_da_finish')
     return checksum
+  }
+
+  private async sendDaPayload(payload: Uint8Array): Promise<void> {
+    if (payload.length === 0) {
+      this.log('info', 'Payload progress 100% (0 B/0 B)')
+      return
+    }
+
+    const chunkSize = 32 * 1024
+    let sent = 0
+    let lastProgress = -1
+
+    while (sent < payload.length) {
+      const next = Math.min(payload.length, sent + chunkSize)
+      const chunk = payload.slice(sent, next)
+      await this.serial.write(chunk)
+      sent = next
+
+      const percent = Math.min(100, Math.floor((sent * 100) / payload.length))
+      if (percent >= 100 || percent - lastProgress >= 5) {
+        this.log('info', `Payload progress ${percent}% (${formatByteSize(sent)}/${formatByteSize(payload.length)})`)
+        lastProgress = percent
+      }
+    }
   }
 
   private async setBootromBaudRate(baudRate: number): Promise<void> {
