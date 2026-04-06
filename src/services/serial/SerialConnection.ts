@@ -146,6 +146,28 @@ export class SerialConnection {
     return result
   }
 
+  async readSome(timeoutMs = DEFAULT_TIMEOUT_MS, maxBytes = 2048): Promise<Uint8Array> {
+    if (!this.reader) {
+      throw new Error('Serial reader is not ready')
+    }
+
+    if (this.unreadBuffer.length > 0) {
+      const chunkSize = Math.min(this.unreadBuffer.length, Math.max(1, maxBytes))
+      const result = this.unreadBuffer.slice(0, chunkSize)
+      this.unreadBuffer = this.unreadBuffer.slice(chunkSize)
+      return result
+    }
+
+    const chunk = await this.readChunk(timeoutMs)
+    if (chunk.length <= maxBytes) {
+      return chunk
+    }
+
+    const result = chunk.slice(0, maxBytes)
+    this.unreadBuffer = concat(chunk.slice(maxBytes), this.unreadBuffer)
+    return result
+  }
+
   async readUntilPattern(pattern: string, timeoutMs: number): Promise<string> {
     const decoder = new TextDecoder()
     let text = ''
