@@ -11,15 +11,14 @@ import {
   APP_AUTHOR,
 } from './constants'
 import type { Chip, DdrType } from './types'
-import { toNumber, stringifyError } from './utils/common'
+import { toNumber } from './utils/common'
 import { ConnectionSection } from './components/sections/ConnectionSection'
 import { FirmwareSection } from './components/sections/FirmwareSection'
 import { ConsoleSection } from './components/sections/ConsoleSection'
 import { useLogs } from './hooks/useLogs'
 import { useTerminalController } from './hooks/useTerminalController'
 import { useFirmwareFlow } from './hooks/useFirmwareFlow'
-import { SerialConnection } from './services/serial/SerialConnection'
-import { MtkUartProtocol } from './services/serial/MtkUartProtocol'
+import { useSerialWorkflow, type SerialTerminalActions } from './hooks/useSerialWorkflow'
 
 function App() {
   const { t } = useTranslation()
@@ -30,16 +29,6 @@ function App() {
   const [bromLoadBaudRate, setBromLoadBaudRate] = useState(115200)
   const [bl2LoadBaudRate, setBl2LoadBaudRate] = useState(115200)
   const [loadAddress, setLoadAddress] = useState(CHIP_CONFIG.mt7981.defaultLoadAddress)
-  const [detectedPortInfo, setDetectedPortInfo] = useState('-')
-
-  const [isConnected, setIsConnected] = useState(false)
-  const [isRunning, setIsRunning] = useState(false)
-
-  const [isTerminating, setIsTerminating] = useState(false)
-
-  const connectionRef = useRef<SerialConnection | null>(null)
-  const terminateRequestedRef = useRef(false)
-  const reconnectAfterTerminateRef = useRef(false)
 
   const { logs, addLog, clearLogs } = useLogs()
 
@@ -104,6 +93,32 @@ function App() {
     getText,
   })
 
+  const terminalActionsRef = useRef<SerialTerminalActions | null>(null)
+
+  const {
+    connectionRef,
+    isConnected,
+    isRunning,
+    isTerminating,
+    detectedPortInfo,
+    handleConnect,
+    handleDisconnect,
+    handleForgetDevice,
+    runWorkflow,
+    handleTerminateExecution,
+  } = useSerialWorkflow({
+    chip,
+    connectBaudRate,
+    bromLoadBaudRate,
+    bl2LoadBaudRate,
+    loadAddress,
+    addLog,
+    getText,
+    terminalActionsRef,
+    resolveVerifiedBl2ForRun,
+    resolveVerifiedFipForRun,
+  })
+
   const {
     activeConsoleTab,
     setActiveConsoleTab,
@@ -133,168 +148,25 @@ function App() {
     getText,
   })
 
+  useEffect(() => {
+    terminalActionsRef.current = {
+      stopTerminalSession,
+      startTerminalSession,
+      setActiveConsoleTab,
+    }
+
+    return () => {
+      terminalActionsRef.current = null
+    }
+  }, [setActiveConsoleTab, startTerminalSession, stopTerminalSession])
+
   const ddrOptions = DDR_OPTIONS_BY_CHIP[chip]
 
-  useEffect(() => {
-    setDdr(ddrOptions[0])
-    setLoadAddress(CHIP_CONFIG[chip].defaultLoadAddress)
-  }, [chip, ddrOptions])
-
-  const handleConnect = async (): Promise<void> => {
-    if (!SerialConnection.isSupported()) {
-      addLog('error', t('unsupported'))
-      return
-    }
-
-    try {
-      setDetectedPortInfo('-')
-      const connection = new SerialConnection()
-      await connection.open(connectBaudRate)
-      connectionRef.current = connection
-      setIsConnected(true)
-      setDetectedPortInfo(connection.portInfo)
-      const connectMode = connection.isAutoSelectedFromAuthorizedPorts
-        ? t('autoDetectedAuthorizedPort')
-        : t('selectedFromPicker')
-      addLog('success', `${t('connected')} (${connection.portInfo}; ${connectMode})`)
-    } catch (error) {
-      addLog('error', stringifyError(error))
-    }
-  }
-
-  const handleDisconnect = async (): Promise<void> => {
-    if (!connectionRef.current) {
-      return
-    }
-    reconnectAfterTerminateRef.current = false
-    await stopTerminalSession(false)
-    await connectionRef.current.close()
-    connectionRef.current = null
-    setIsConnected(false)
-    setDetectedPortInfo('-')
-    addLog('info', t('disconnected'))
-  }
-
-  const handleForgetDevice = async (): Promise<void> => {
-    const connection = connectionRef.current
-    if (!connection) {
-      addLog('warn', t('serialNotConnected'))
-      return
-    }
-
-    try {
-      const forgotten = await connection.forgetCurrentPort()
-      connectionRef.current = null
-      setIsConnected(false)
-      setDetectedPortInfo('-')
-      if (forgotten) {
-        addLog('success', t('deviceForgotten'))
-      } else {
-        addLog('warn', t('deviceForgetUnsupported'))
-      }
-    } catch (error) {
-      addLog('error', stringifyError(error))
-    }
-  }
-
-  const reconnectSerialAfterTerminate = async (): Promise<void> => {
-    if (!reconnectAfterTerminateRef.current || connectionRef.current?.isOpen) {
-      return
-    }
-
-    try {
-      const connection = new SerialConnection()
-      await connection.open(connectBaudRate)
-      connectionRef.current = connection
-      setIsConnected(true)
-      setDetectedPortInfo(connection.portInfo)
-      const connectMode = connection.isAutoSelectedFromAuthorizedPorts
-        ? t('autoDetectedAuthorizedPort')
-        : t('selectedFromPicker')
-      addLog('success', `${t('reconnectedAfterTerminate')} (${connection.portInfo}; ${connectMode})`)
-    } catch (error) {
-      addLog('error', `${t('reconnectAfterTerminateFailed')}: ${stringifyError(error)}`)
-    } finally {
-      reconnectAfterTerminateRef.current = false
-    }
-  }
-
-  const runWorkflow = async (): Promise<void> => {
-    const connection = connectionRef.current
-    if (!connection || !isConnected) {
-      addLog('error', t('serialNotConnected'))
-      return
-    }
-
-    await stopTerminalSession(false)
-    terminateRequestedRef.current = false
-    setIsTerminating(false)
-    setIsRunning(true)
-    addLog('info', '-------------------------')
-
-    try {
-      const fip = await resolveVerifiedFipForRun()
-      const bl2 = await resolveVerifiedBl2ForRun()
-
-      await connection.reopenAtBaudRate(115200)
-
-      const protocol = new MtkUartProtocol(connection, addLog)
-      await protocol.loadBl2({
-        payload: bl2.payload,
-        loadAddress,
-        isAarch64: CHIP_CONFIG[chip].arch === 'aarch64',
-        bromLoadBaudRate,
-      })
-
-      if (fip) {
-        await protocol.loadFip({
-          payload: fip.payload,
-          bl2LoadBaudRate,
-        })
-      }
-
-      addLog('success', t('stepDone'))
-    } catch (error) {
-      if (terminateRequestedRef.current) {
-        addLog('warn', t('stepTerminated'))
-      } else {
-        addLog('error', `${t('stepFailed')}: ${stringifyError(error)}`)
-      }
-    } finally {
-      const terminated = terminateRequestedRef.current
-      terminateRequestedRef.current = false
-      setIsRunning(false)
-      setIsTerminating(false)
-      if (terminated) {
-        await reconnectSerialAfterTerminate()
-      } else if (connectionRef.current?.isOpen) {
-        setActiveConsoleTab('terminal')
-        await startTerminalSession(true)
-      }
-    }
-  }
-
-  const handleTerminateExecution = async (): Promise<void> => {
-    if (!isRunning) {
-      addLog('warn', t('nothingToTerminate'))
-      return
-    }
-
-    setIsTerminating(true)
-    terminateRequestedRef.current = true
-    reconnectAfterTerminateRef.current = true
-    addLog('warn', t('terminatingExecution'))
-
-    await stopTerminalSession(false)
-    const connection = connectionRef.current
-    if (connection) {
-      await connection.close().catch(() => undefined)
-      connectionRef.current = null
-      setIsConnected(false)
-      setDetectedPortInfo('-')
-      addLog('warn', t('executionTerminatedPortReleasedWillReconnect'))
-    }
-  }
+  const handleChipChange = useCallback((nextChip: Chip): void => {
+    setChip(nextChip)
+    setDdr(DDR_OPTIONS_BY_CHIP[nextChip][0])
+    setLoadAddress(CHIP_CONFIG[nextChip].defaultLoadAddress)
+  }, [])
 
   return (
     <main className="app">
@@ -348,7 +220,7 @@ function App() {
         bromLoadBaudRate={bromLoadBaudRate}
         bl2LoadBaudRate={bl2LoadBaudRate}
         onConnectBaudRateInput={(value) => setConnectBaudRate(toNumber(value, 115200))}
-        onChipChange={setChip}
+        onChipChange={handleChipChange}
         onDdrChange={setDdr}
         onLoadAddressInput={(value) => setLoadAddress(toNumber(value, CHIP_CONFIG[chip].defaultLoadAddress))}
         onBromBaudRateInput={(value) => setBromLoadBaudRate(toNumber(value, 115200))}
