@@ -33,5 +33,8 @@ export const DEFAULT_BL2_RELEASE_API =
 export const DEFAULT_FIP_RELEASE_API =
   'https://api.github.com/repos/Yuzhii0718/bl-mt798x-dhcpd/releases/tags/2026.03.23-1218-all'
 
-export const APP_VERSION = 'v0.1.2'
+export const GITHUB_PROJECT_URL = 'https://github.com/Yuzhii0718/mtk-launchpad'
+export const EEPROM_TOOL_URL = 'https://yuzhii0718.eu.org/html/application/mt798x_eeprom/index.html'
+
+export const APP_VERSION = 'v0.1.3'
 export const APP_AUTHOR = 'Yuzhii'

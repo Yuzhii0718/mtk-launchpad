@@ -9,6 +9,8 @@ import {
   CHIP_CONFIG,
   CHIP_OPTIONS,
   DDR_OPTIONS_BY_CHIP,
+  GITHUB_PROJECT_URL,
+  EEPROM_TOOL_URL,
   APP_VERSION,
   APP_AUTHOR,
 } from './constants'
@@ -828,12 +830,12 @@ function App() {
 
       const fip = loadMode === 'bl2-fip'
         ? await resolveFipSelection({
-            fipSource,
-            releaseFipOptions,
-            selectedReleaseFipKey,
-            uploadedFipFile,
-            executionRemoteFipKey,
-          })
+          fipSource,
+          releaseFipOptions,
+          selectedReleaseFipKey,
+          uploadedFipFile,
+          executionRemoteFipKey,
+        })
         : null
 
       if (fip) {
@@ -936,7 +938,15 @@ function App() {
         <div className="header-actions">
           <a
             className="nav-link"
-            href="https://yuzhii0718.eu.org/html/application/mt798x_eeprom/index.html"
+            href={GITHUB_PROJECT_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {t('navGithubProject')}
+          </a>
+          <a
+            className="nav-link"
+            href={EEPROM_TOOL_URL}
             target="_blank"
             rel="noopener noreferrer"
           >
@@ -1103,19 +1113,19 @@ function App() {
                   ))}
                 </select>
               </div>
-                <div className="button-row">
-                  <button
-                    type="button"
-                    onClick={() => void handleUseRemoteBl2ForExecution()}
-                    disabled={!canUseRemoteBl2ForExecution}
-                  >
-                    {t('useRemoteBl2ForRun')}
-                  </button>
-                </div>
-                {!selectedExecutionRemoteBl2Candidate && <p className="hint hint-warning">{t('remoteBl2NotSelectedForRun')}</p>}
-                {selectedExecutionRemoteBl2Candidate && (
-                  <p className="hint">{t('remoteBl2InUse')}: {selectedExecutionRemoteBl2Candidate.fileName}</p>
-                )}
+              <div className="button-row">
+                <button
+                  type="button"
+                  onClick={() => void handleUseRemoteBl2ForExecution()}
+                  disabled={!canUseRemoteBl2ForExecution}
+                >
+                  {t('useRemoteBl2ForRun')}
+                </button>
+              </div>
+              {!selectedExecutionRemoteBl2Candidate && <p className="hint hint-warning">{t('remoteBl2NotSelectedForRun')}</p>}
+              {selectedExecutionRemoteBl2Candidate && (
+                <p className="hint">{t('remoteBl2InUse')}: {selectedExecutionRemoteBl2Candidate.fileName}</p>
+              )}
               <div className="button-row">
                 <button
                   type="button"
@@ -1473,11 +1483,11 @@ async function resolveBl2Selection(input: {
   const candidate: FirmwareCandidate = parsed
     ? { ...parsed, source: 'upload' }
     : {
-        kind: 'bl2',
-        fileName: uploadedBl2File.name,
-        chip: null,
-        source: 'upload',
-      }
+      kind: 'bl2',
+      fileName: uploadedBl2File.name,
+      chip: null,
+      source: 'upload',
+    }
 
   return {
     candidate,
@@ -1513,11 +1523,11 @@ async function resolveFipSelection(input: {
   const candidate: FirmwareCandidate = parsed
     ? { ...parsed, source: 'upload' }
     : {
-        kind: 'fip',
-        fileName: uploadedFipFile.name,
-        chip: null,
-        source: 'upload',
-      }
+      kind: 'fip',
+      fileName: uploadedFipFile.name,
+      chip: null,
+      source: 'upload',
+    }
 
   return {
     candidate,
