@@ -119,6 +119,24 @@ button:disabled {
   margin-bottom: 0.5rem;
 }
 
+.workflow-action-row {
+  flex-wrap: nowrap;
+}
+
+.console-tab-groups {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin: 0.5rem 0;
+}
+
+.console-tab-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
 .hint {
   color: var(--muted);
   margin: 0.5rem 0;
@@ -227,12 +245,31 @@ button:disabled {
 
 .terminal-meta-row {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
   gap: 0.75rem;
   margin-top: 0.5rem;
   color: var(--muted);
   font-size: 0.9rem;
+}
+
+.terminal-meta-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.terminal-meta-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.terminal-meta-group-tight {
+  gap: 0.3rem;
 }
 
 .terminal-toggle {
@@ -260,13 +297,6 @@ button:disabled {
   font-size: 0.9rem;
 }
 
-.terminal-interrupt-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-top: 0.65rem;
-}
-
 .footer {
   display: flex;
   justify-content: space-between;
@@ -287,5 +317,9 @@ button:disabled {
 
   .terminal-input-row {
     grid-template-columns: 1fr;
+  }
+
+  .workflow-action-row {
+    flex-wrap: wrap;
   }
 }

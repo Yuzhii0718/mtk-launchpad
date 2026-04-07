@@ -56,7 +56,7 @@ function App() {
     setSelectedReleaseBl2Key,
     selectedExecutionRemoteBl2Candidate,
     selectedReleaseFipKey,
-    setSelectedReleaseFipKey,
+    handleSelectedReleaseFipKeyChange,
     selectedExecutionRemoteFipCandidate,
     setUploadedBl2File,
     setUploadedFipFile,
@@ -282,7 +282,7 @@ function App() {
         onFipReleaseApiChange={setFipReleaseApi}
         onBoardFilterChange={setBoardFilter}
         onFetchFipRelease={handleFetchFipRelease}
-        onSelectedReleaseFipKeyChange={setSelectedReleaseFipKey}
+        onSelectedReleaseFipKeyChange={handleSelectedReleaseFipKeyChange}
         onUseRemoteFipForExecution={handleUseRemoteFipForExecution}
         onDownloadBoardBl2={handleDownloadBoardBl2}
         onDownloadFip={handleDownloadFip}
