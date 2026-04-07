@@ -37,5 +37,5 @@ export const GITHUB_BOOTLOADER_URL = 'https://github.com/Yuzhii0718/bl-mt798x-dh
 export const GITHUB_PROJECT_URL = 'https://github.com/Yuzhii0718/mtk-launchpad'
 export const EEPROM_TOOL_URL = 'https://yuzhii0718.eu.org/html/application/mt798x_eeprom/index.html'
 
-export const APP_VERSION = 'v0.2.1'
+export const APP_VERSION = 'v0.2.2'
 export const APP_AUTHOR = 'Yuzhii'

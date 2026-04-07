@@ -22,6 +22,10 @@ const LOCAL_PROXY_PATH = '/__mtk_asset_proxy'
 
 const CORS_PROXIES: Array<{ label: string; buildUrl: (url: string) => string }> = [
   {
+    label: 'codetabs-proxy',
+    buildUrl: (url) => `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(url)}`,
+  },
+  {
     label: 'corsproxy-io',
     buildUrl: (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
   },
@@ -39,6 +43,17 @@ function buildLocalProxyUrl(targetUrl: string, accept?: string): string {
     params.set('accept', accept)
   }
   return `${LOCAL_PROXY_PATH}?${params.toString()}`
+}
+
+function shouldTryLocalDevProxy(): boolean {
+  if (typeof window === 'undefined') {
+    return true
+  }
+
+  const host = window.location.hostname.toLowerCase()
+  return host === 'localhost'
+    || host === '127.0.0.1'
+    || host === '[::1]'
 }
 
 export async function fetchReleaseCandidates(apiUrl: string): Promise<ReleaseQueryResult> {
@@ -90,11 +105,15 @@ export async function downloadFirmwareCandidate(candidate: FirmwareCandidate): P
   }
 
   const attempts: Array<{ url: string; init?: RequestInit; label: string }> = []
+  const localDevProxyEnabled = shouldTryLocalDevProxy()
+
   if (candidate.githubAssetApiUrl) {
-    attempts.push({
-      url: buildLocalProxyUrl(candidate.githubAssetApiUrl, 'application/octet-stream'),
-      label: 'local-dev-proxy-github-asset-api',
-    })
+    if (localDevProxyEnabled) {
+      attempts.push({
+        url: buildLocalProxyUrl(candidate.githubAssetApiUrl, 'application/octet-stream'),
+        label: 'local-dev-proxy-github-asset-api',
+      })
+    }
 
     attempts.push({
       url: candidate.githubAssetApiUrl,
@@ -107,10 +126,12 @@ export async function downloadFirmwareCandidate(candidate: FirmwareCandidate): P
     })
   }
   if (candidate.url) {
-    attempts.push({
-      url: buildLocalProxyUrl(candidate.url),
-      label: 'local-dev-proxy-github-browser-download-url',
-    })
+    if (localDevProxyEnabled) {
+      attempts.push({
+        url: buildLocalProxyUrl(candidate.url),
+        label: 'local-dev-proxy-github-browser-download-url',
+      })
+    }
 
     attempts.push({
       url: candidate.url,
@@ -168,8 +189,12 @@ export async function downloadFirmwareCandidate(candidate: FirmwareCandidate): P
     }
   }
 
+  const extraHint = localDevProxyEnabled
+    ? ''
+    : ' Hint: this site is running in static mode; local dev proxy is unavailable, so remote loading depends on CORS-capable relay endpoints.'
+
   throw new Error(
-    `Remote asset fetch failed. ${errors.join(' | ')}`,
+    `Remote asset fetch failed. ${errors.join(' | ')}${extraHint}`,
   )
 }
 
