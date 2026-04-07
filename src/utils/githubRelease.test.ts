@@ -57,6 +57,10 @@ describe('downloadFirmwareCandidate', () => {
     restore()
 
     expect(calls.some((url) => url.includes('/__mtk_asset_proxy'))).toBe(false)
+    expect(calls.some((url) => url.startsWith('https://api.github.com/'))).toBe(false)
+    expect(calls.some((url) => url.startsWith('https://github.com/'))).toBe(false)
+    expect(calls.some((url) => url.startsWith('https://corsproxy.io/'))).toBe(false)
+    expect(calls.some((url) => url.startsWith('https://cors.isomorphic-git.org/'))).toBe(false)
   })
 
   it('tries local dev proxy first on localhost', async () => {

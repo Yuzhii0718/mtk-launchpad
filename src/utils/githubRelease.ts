@@ -25,6 +25,9 @@ const CORS_PROXIES: Array<{ label: string; buildUrl: (url: string) => string }> 
     label: 'codetabs-proxy',
     buildUrl: (url) => `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(url)}`,
   },
+]
+
+const NOISY_FALLBACK_PROXIES: Array<{ label: string; buildUrl: (url: string) => string }> = [
   {
     label: 'corsproxy-io',
     buildUrl: (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
@@ -106,6 +109,7 @@ export async function downloadFirmwareCandidate(candidate: FirmwareCandidate): P
 
   const attempts: Array<{ url: string; init?: RequestInit; label: string }> = []
   const localDevProxyEnabled = shouldTryLocalDevProxy()
+  const includeNoisyFallbacks = localDevProxyEnabled
 
   if (candidate.githubAssetApiUrl) {
     if (localDevProxyEnabled) {
@@ -113,17 +117,17 @@ export async function downloadFirmwareCandidate(candidate: FirmwareCandidate): P
         url: buildLocalProxyUrl(candidate.githubAssetApiUrl, 'application/octet-stream'),
         label: 'local-dev-proxy-github-asset-api',
       })
-    }
 
-    attempts.push({
-      url: candidate.githubAssetApiUrl,
-      init: {
-        headers: {
-          Accept: 'application/octet-stream',
+      attempts.push({
+        url: candidate.githubAssetApiUrl,
+        init: {
+          headers: {
+            Accept: 'application/octet-stream',
+          },
         },
-      },
-      label: 'github-asset-api',
-    })
+        label: 'github-asset-api',
+      })
+    }
   }
   if (candidate.url) {
     if (localDevProxyEnabled) {
@@ -131,12 +135,12 @@ export async function downloadFirmwareCandidate(candidate: FirmwareCandidate): P
         url: buildLocalProxyUrl(candidate.url),
         label: 'local-dev-proxy-github-browser-download-url',
       })
-    }
 
-    attempts.push({
-      url: candidate.url,
-      label: 'github-browser-download-url',
-    })
+      attempts.push({
+        url: candidate.url,
+        label: 'github-browser-download-url',
+      })
+    }
   }
 
   if (candidate.githubAssetApiUrl) {
@@ -151,6 +155,20 @@ export async function downloadFirmwareCandidate(candidate: FirmwareCandidate): P
         label: `${proxy.label}-github-asset-api`,
       })
     }
+
+    if (includeNoisyFallbacks) {
+      for (const proxy of NOISY_FALLBACK_PROXIES) {
+        attempts.push({
+          url: proxy.buildUrl(candidate.githubAssetApiUrl),
+          init: {
+            headers: {
+              Accept: 'application/octet-stream',
+            },
+          },
+          label: `${proxy.label}-github-asset-api`,
+        })
+      }
+    }
   }
 
   if (candidate.url) {
@@ -159,6 +177,15 @@ export async function downloadFirmwareCandidate(candidate: FirmwareCandidate): P
         url: proxy.buildUrl(candidate.url),
         label: `${proxy.label}-github-browser-download-url`,
       })
+    }
+
+    if (includeNoisyFallbacks) {
+      for (const proxy of NOISY_FALLBACK_PROXIES) {
+        attempts.push({
+          url: proxy.buildUrl(candidate.url),
+          label: `${proxy.label}-github-browser-download-url`,
+        })
+      }
     }
   }
 
