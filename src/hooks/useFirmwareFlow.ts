@@ -186,6 +186,12 @@ export function useFirmwareFlow(input: UseFirmwareFlowParams) {
     setFipMd5Passed(null)
   }, [])
 
+  const handleSelectedReleaseFipKeyChange = useCallback((nextKey: string): void => {
+    setSelectedReleaseFipKey(nextKey)
+    setExecutionRemoteFipKey('')
+    setFipMd5Unknown()
+  }, [setFipMd5Unknown])
+
   const applyBl2Md5Result = useCallback((resolved: Awaited<ReturnType<typeof resolveBl2Selection>>, withLog: boolean): boolean => {
     const actual = computeMd5(resolved.payload)
     const passed = compareMd5(resolved.candidate.expectedMd5, actual)
@@ -500,7 +506,7 @@ export function useFirmwareFlow(input: UseFirmwareFlowParams) {
     setSelectedReleaseBl2Key,
     selectedExecutionRemoteBl2Candidate,
     selectedReleaseFipKey,
-    setSelectedReleaseFipKey,
+    handleSelectedReleaseFipKeyChange,
     selectedExecutionRemoteFipCandidate,
     uploadedBl2File,
     setUploadedBl2File,
