@@ -447,7 +447,7 @@ export function useTerminalController(input: UseTerminalControllerParams) {
     let sent = 0
 
     try {
-      appendTerminalOutput(`\n> [${getText('interruptIntoUboot')}] ${visualizeControlChars(payload)} x ~5s\n`)
+      appendTerminalOutput(`\n> [${getText('interruptIntoUboot')}] ${visualizeControlChars(payload)} x ~3s\n`)
       while (Date.now() < deadline) {
         await connection.write(encoder.encode(payload))
         sent += 1
