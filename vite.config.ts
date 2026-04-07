@@ -1,6 +1,65 @@
 import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { readFileSync } from 'node:fs'
+import { execSync } from 'node:child_process'
+
+type PackageMeta = {
+  version?: string
+  author?: string | { name?: string }
+}
+
+const packageMeta = JSON.parse(
+  readFileSync(new URL('./package.json', import.meta.url), 'utf-8'),
+) as PackageMeta
+
+function resolveGitShortHash(): string {
+  const fromEnv = process.env.VITE_GIT_COMMIT_SHORT
+    ?? process.env.GITHUB_SHA
+    ?? process.env.VERCEL_GIT_COMMIT_SHA
+    ?? process.env.CF_PAGES_COMMIT_SHA
+
+  if (fromEnv) {
+    return fromEnv.slice(0, 7)
+  }
+
+  try {
+    return execSync('git rev-parse --short=7 HEAD', {
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+      .toString()
+      .trim()
+  } catch {
+    return 'nogit'
+  }
+}
+
+function hasDirtyWorkingTree(): boolean {
+  try {
+    const status = execSync('git status --porcelain', {
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+      .toString()
+      .trim()
+    return status.length > 0
+  } catch {
+    return false
+  }
+}
+
+function resolveAppVersion(isDevMode: boolean): string {
+  const version = `${APP_VERSION_BASE}+${resolveGitShortHash()}`
+  if (!isDevMode) {
+    return version
+  }
+
+  return hasDirtyWorkingTree() ? `${version}-dirty` : version
+}
+
+const APP_VERSION_BASE = packageMeta.version ? `v${packageMeta.version}` : 'v0.0.0'
+const APP_AUTHOR = typeof packageMeta.author === 'string'
+  ? packageMeta.author
+  : packageMeta.author?.name ?? '-'
 
 const LOCAL_PROXY_PATH = '/__mtk_asset_proxy'
 const ALLOWED_PROXY_HOSTS = new Set([
@@ -85,21 +144,30 @@ function createGithubAssetProxyMiddleware(): MiddlewareHandler {
 }
 
 // https://vite.dev/config/
-export default defineConfig({
-  base: '/mtk-launchpad/',
-  plugins: [
-    react(),
-    {
-      name: 'github-asset-local-proxy',
-      configureServer(server) {
-        server.middlewares.use(LOCAL_PROXY_PATH, createGithubAssetProxyMiddleware())
-      },
-      configurePreviewServer(server) {
-        server.middlewares.use(LOCAL_PROXY_PATH, createGithubAssetProxyMiddleware())
-      },
+export default defineConfig(({ command, mode }) => {
+  const isDevMode = command === 'serve' && mode === 'development'
+  const appVersion = resolveAppVersion(isDevMode)
+
+  return {
+    base: '/mtk-launchpad/',
+    define: {
+      __APP_VERSION__: JSON.stringify(appVersion),
+      __APP_AUTHOR__: JSON.stringify(APP_AUTHOR),
     },
-  ],
-  test: {
-    globals: true,
-  },
+    plugins: [
+      react(),
+      {
+        name: 'github-asset-local-proxy',
+        configureServer(server) {
+          server.middlewares.use(LOCAL_PROXY_PATH, createGithubAssetProxyMiddleware())
+        },
+        configurePreviewServer(server) {
+          server.middlewares.use(LOCAL_PROXY_PATH, createGithubAssetProxyMiddleware())
+        },
+      },
+    ],
+    test: {
+      globals: true,
+    },
+  }
 })

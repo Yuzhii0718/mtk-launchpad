@@ -8,8 +8,6 @@ import {
   GITHUB_BOOTLOADER_URL,
   GITHUB_PROJECT_URL,
   EEPROM_TOOL_URL,
-  APP_VERSION,
-  APP_AUTHOR,
 } from './constants'
 import type { Chip, DdrType } from './types'
 import { toNumber } from './utils/common'
@@ -324,8 +322,8 @@ function App() {
       />
 
       <footer className="card footer">
-        <span>{t('appVersionLabel')}: {APP_VERSION}</span>
-        <span>{t('appAuthorLabel')}: {APP_AUTHOR}</span>
+        <span>{t('appVersionLabel')}: {__APP_VERSION__}</span>
+        <span>{t('appAuthorLabel')}: {__APP_AUTHOR__}</span>
       </footer>
     </main>
   )
