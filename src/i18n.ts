@@ -7,6 +7,7 @@ const resources = {
       appTitle: 'MTK Launchpad',
       appSubtitle: '纯前端 UART 加载工具（无服务器）',
       navGithubProject: 'GitHub 项目页',
+      navBootloaderProject: 'Bootloader 项目页',
       navEepromTool: 'mt798x eeprom 功率工具',
       unsupported: '当前浏览器不支持 Web Serial，请使用最新版 Chrome/Edge。',
       language: '语言',
@@ -138,6 +139,7 @@ const resources = {
     translation: {
       appTitle: 'MTK Launchpad',
       appSubtitle: 'Serverless UART loader in browser',
+      nvaBootloaderProject: 'Bootloader project',
       navGithubProject: 'GitHub project',
       navEepromTool: 'MT798x EEPROM power tool',
       unsupported: 'Web Serial is not supported in this browser. Please use latest Chrome/Edge.',

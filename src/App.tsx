@@ -5,6 +5,7 @@ import i18n from './i18n'
 import {
   CHIP_CONFIG,
   DDR_OPTIONS_BY_CHIP,
+  GITHUB_BOOTLOADER_URL,
   GITHUB_PROJECT_URL,
   EEPROM_TOOL_URL,
   APP_VERSION,
@@ -177,6 +178,14 @@ function App() {
           <p>{t('appSubtitle')}</p>
         </div>
         <div className="header-actions">
+          <a
+            className="nav-link"
+            href={GITHUB_BOOTLOADER_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {t('navBootloaderProject')}
+          </a>
           <a
             className="nav-link"
             href={GITHUB_PROJECT_URL}
