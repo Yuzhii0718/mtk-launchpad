@@ -128,39 +128,47 @@ export function ConsoleSection(props: ConsoleSectionProps) {
         </button>
       </div>
 
-      <div className="console-tab-groups">
-        <div className="console-tab-group">
+      <div className="console-toolbar-row">
+        <div className="console-segmented" role="tablist" aria-label={t('logs')}>
           <button
             type="button"
-            className={`tab-button ${activeConsoleTab === 'logs' ? 'active' : ''}`}
+            className={`segment-button ${activeConsoleTab === 'logs' ? 'active' : ''}`}
             onClick={() => onActiveConsoleTabChange('logs')}
           >
             {t('logs')}
           </button>
-          <button type="button" onClick={onClearLogs} disabled={activeConsoleTab !== 'logs'}>{t('clearLogs')}</button>
-        </div>
-        <div className="console-tab-group">
           <button
             type="button"
-            className={`tab-button ${activeConsoleTab === 'terminal' ? 'active' : ''}`}
+            className={`segment-button ${activeConsoleTab === 'terminal' ? 'active' : ''}`}
             onClick={() => onActiveConsoleTabChange('terminal')}
           >
             {t('terminal')}
           </button>
-          <button
-            type="button"
-            onClick={() => void onStartTerminal()}
-            disabled={!isConnected || isRunning || isTerminalRunning}
-          >
-            {t('startTerminal')}
-          </button>
-          <button
-            type="button"
-            onClick={() => void onStopTerminal()}
-            disabled={!isTerminalRunning}
-          >
-            {t('stopTerminal')}
-          </button>
+        </div>
+
+        <div className="console-tab-actions">
+          {activeConsoleTab === 'logs' && (
+            <button type="button" onClick={onClearLogs}>{t('clearLogs')}</button>
+          )}
+
+          {activeConsoleTab === 'terminal' && (
+            <>
+              <button
+                type="button"
+                onClick={() => void onStartTerminal()}
+                disabled={!isConnected || isRunning || isTerminalRunning}
+              >
+                {t('startTerminal')}
+              </button>
+              <button
+                type="button"
+                onClick={() => void onStopTerminal()}
+                disabled={!isTerminalRunning}
+              >
+                {t('stopTerminal')}
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -183,10 +191,6 @@ export function ConsoleSection(props: ConsoleSectionProps) {
           <div className="terminal-meta-row">
             <span>{t('terminalRxBytes')}: {terminalRxBytes}</span>
             <div className="terminal-meta-actions">
-              <div className="terminal-meta-group terminal-meta-group-tight">
-                <button type="button" onClick={onClearTerminalOutput}>{t('terminalClear')}</button>
-                <button type="button" onClick={onSaveTerminalOutput}>{t('terminalSave')}</button>
-              </div>
               {isTerminalRunning && (
                 <div className="terminal-meta-group">
                   <button
@@ -205,6 +209,10 @@ export function ConsoleSection(props: ConsoleSectionProps) {
                   </button>
                 </div>
               )}
+              <div className="terminal-meta-group terminal-meta-group-tight">
+                <button type="button" onClick={onClearTerminalOutput}>{t('terminalClear')}</button>
+                <button type="button" onClick={onSaveTerminalOutput}>{t('terminalSave')}</button>
+              </div>
             </div>
           </div>
           <div className="terminal-panel" ref={terminalPanelRef} onScroll={handleTerminalPanelScroll}>

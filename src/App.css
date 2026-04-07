@@ -123,15 +123,40 @@ button:disabled {
   flex-wrap: nowrap;
 }
 
-.console-tab-groups {
+.console-toolbar-row {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
+  justify-content: space-between;
+  gap: 0.7rem;
   flex-wrap: wrap;
   margin: 0.5rem 0;
 }
 
-.console-tab-group {
+.console-segmented {
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.2rem;
+  background: var(--bg-control);
+}
+
+.segment-button {
+  border: 0;
+  border-radius: 8px;
+  padding: 0.5rem 0.85rem;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.segment-button.active {
+  background: rgba(59, 130, 246, 0.18);
+  color: var(--text);
+}
+
+.console-tab-actions {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
@@ -209,15 +234,6 @@ button:disabled {
 
 .log-line.success {
   color: #15803d;
-}
-
-.tab-button {
-  border-style: dashed;
-}
-
-.tab-button.active {
-  border-style: solid;
-  background: rgba(59, 130, 246, 0.12);
 }
 
 .terminal-panel {
@@ -321,5 +337,9 @@ button:disabled {
 
   .workflow-action-row {
     flex-wrap: wrap;
+  }
+
+  .console-segmented {
+    width: 100%;
   }
 }
