@@ -147,6 +147,7 @@ const resources = {
       loadAddress: '加载地址',
       appVersionLabel: '版本',
       appAuthorLabel: '作者',
+      closeFocus: '退出聚焦',
     },
   },
   en: {
@@ -294,6 +295,7 @@ const resources = {
       loadAddress: 'Load address',
       appVersionLabel: 'Version',
       appAuthorLabel: 'Author',
+      closeFocus: 'Exit focus',
     },
   },
 }

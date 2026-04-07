@@ -186,6 +186,7 @@ button:disabled {
   gap: 0.4rem;
 }
 
+
 .hint {
   color: var(--muted);
   margin: 0.5rem 0;
@@ -297,6 +298,35 @@ button:disabled {
   animation: terminalCardPop 240ms ease;
 }
 
+.terminal-focus-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(1px);
+  z-index: 30;
+}
+
+.terminal-focus-close {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-control);
+  color: var(--text);
+  font-size: 1.25rem;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  z-index: 1;
+}
+
+.terminal-focus-close:hover {
+  box-shadow: 0 8px 16px rgba(15, 23, 42, 0.2);
+}
+
 @keyframes terminalCardPop {
   from {
     opacity: 0.65;
@@ -326,6 +356,20 @@ button:disabled {
   font-size: 0.9rem;
 }
 
+.terminal-meta-left {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.terminal-meta-toggles {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
 .terminal-meta-actions {
   display: flex;
   align-items: center;
@@ -343,6 +387,7 @@ button:disabled {
 .terminal-meta-group-tight {
   gap: 0.3rem;
 }
+
 
 .terminal-toggle {
   display: inline-flex;

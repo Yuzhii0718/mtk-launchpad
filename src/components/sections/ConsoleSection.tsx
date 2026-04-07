@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { LogEntry } from '../../types'
@@ -45,10 +45,14 @@ type ConsoleSectionProps = {
 
 export function ConsoleSection(props: ConsoleSectionProps) {
   const { t } = useTranslation()
+  const consoleSectionRef = useRef<HTMLElement | null>(null)
   const logsPanelRef = useRef<HTMLDivElement | null>(null)
   const terminalPanelRef = useRef<HTMLDivElement | null>(null)
   const shouldFollowLogsRef = useRef(true)
   const shouldFollowTerminalRef = useRef(true)
+  const pendingLogScrollTimerRef = useRef<number | null>(null)
+  const shouldScrollPageToLogsRef = useRef(false)
+  const previousConsoleTabRef = useRef<ConsoleTab>('logs')
 
   const {
     isConnected,
@@ -91,6 +95,11 @@ export function ConsoleSection(props: ConsoleSectionProps) {
     return panel.scrollHeight - panel.scrollTop - panel.clientHeight <= 24
   }, [])
 
+  const handleExitTerminalFocus = useCallback((): void => {
+    shouldScrollPageToLogsRef.current = true
+    onActiveConsoleTabChange('logs')
+  }, [onActiveConsoleTabChange])
+
   const handleLogsPanelScroll = useCallback((): void => {
     const panel = logsPanelRef.current
     if (!panel) {
@@ -98,6 +107,30 @@ export function ConsoleSection(props: ConsoleSectionProps) {
     }
     shouldFollowLogsRef.current = isNearBottom(panel)
   }, [isNearBottom])
+
+  const scrollPageToLogs = useCallback((): void => {
+    const target = logsPanelRef.current ?? consoleSectionRef.current
+    if (!target) {
+      return
+    }
+    target.scrollIntoView({ block: 'start', behavior: 'auto' })
+  }, [])
+
+  const scrollLogsToBottom = useCallback((force = false): void => {
+    const panel = logsPanelRef.current
+    if (!panel) {
+      return
+    }
+    const target = Math.max(0, panel.scrollHeight - panel.clientHeight)
+    panel.scrollTop = target
+    if (!force) {
+      return
+    }
+    requestAnimationFrame(() => {
+      const nextTarget = Math.max(0, panel.scrollHeight - panel.clientHeight)
+      panel.scrollTop = nextTarget
+    })
+  }, [])
 
   const handleTerminalPanelScroll = useCallback((): void => {
     const panel = terminalPanelRef.current
@@ -111,12 +144,46 @@ export function ConsoleSection(props: ConsoleSectionProps) {
     if (activeConsoleTab !== 'logs') {
       return
     }
-    const panel = logsPanelRef.current
-    if (!panel || !shouldFollowLogsRef.current) {
+    if (!shouldFollowLogsRef.current) {
       return
     }
-    panel.scrollTop = panel.scrollHeight
-  }, [activeConsoleTab, logs])
+    scrollLogsToBottom()
+  }, [activeConsoleTab, logs, scrollLogsToBottom])
+
+  useLayoutEffect(() => {
+    if (activeConsoleTab !== 'logs') {
+      return
+    }
+    shouldFollowLogsRef.current = true
+    scrollLogsToBottom(true)
+    const shouldScrollPage =
+      shouldScrollPageToLogsRef.current || previousConsoleTabRef.current === 'terminal'
+    if (shouldScrollPage) {
+      shouldScrollPageToLogsRef.current = false
+      requestAnimationFrame(() => {
+        scrollPageToLogs()
+      })
+    }
+    if (pendingLogScrollTimerRef.current !== null) {
+      window.clearTimeout(pendingLogScrollTimerRef.current)
+    }
+    pendingLogScrollTimerRef.current = window.setTimeout(() => {
+      scrollLogsToBottom(true)
+      if (shouldScrollPage) {
+        scrollPageToLogs()
+      }
+    }, 120)
+    return () => {
+      if (pendingLogScrollTimerRef.current !== null) {
+        window.clearTimeout(pendingLogScrollTimerRef.current)
+        pendingLogScrollTimerRef.current = null
+      }
+    }
+  }, [activeConsoleTab, scrollLogsToBottom, scrollPageToLogs])
+
+  useEffect(() => {
+    previousConsoleTabRef.current = activeConsoleTab
+  }, [activeConsoleTab])
 
   useEffect(() => {
     if (activeConsoleTab !== 'terminal') {
@@ -129,9 +196,30 @@ export function ConsoleSection(props: ConsoleSectionProps) {
     panel.scrollTop = panel.scrollHeight
   }, [activeConsoleTab, terminalOutput])
 
+  const shouldFocusTerminal = activeConsoleTab === 'terminal'
+
   return (
-    <section className={`card ${activeConsoleTab === 'terminal' ? 'console-terminal-focused' : ''}`}>
-      <div className="button-row workflow-action-row">
+    <>
+      {shouldFocusTerminal && (
+        <div
+          className="terminal-focus-overlay"
+          onClick={handleExitTerminalFocus}
+          role="presentation"
+        />
+      )}
+      <section ref={consoleSectionRef} className={`card ${shouldFocusTerminal ? 'console-terminal-focused' : ''}`}>
+        {shouldFocusTerminal && (
+          <button
+            type="button"
+            className="terminal-focus-close"
+            onClick={handleExitTerminalFocus}
+            aria-label={t('closeFocus')}
+            title={t('closeFocus')}
+          >
+            ×
+          </button>
+        )}
+        <div className="button-row workflow-action-row">
         <button type="button" onClick={() => void onRunWorkflow()} disabled={!isConnected || isRunning}>
           {isRunning ? t('running') : t('startFlash')}
         </button>
@@ -201,9 +289,9 @@ export function ConsoleSection(props: ConsoleSectionProps) {
         <>
           <h2>{t('terminal')}</h2>
           <div className="terminal-meta-row">
-            <span>{t('terminalRxBytes')}: {terminalRxBytes}</span>
-            <div className="terminal-meta-actions">
-              <div className="terminal-meta-group">
+            <div className="terminal-meta-left">
+              <span>{t('terminalRxBytes')}: {terminalRxBytes}</span>
+              <div className="terminal-meta-toggles">
                 <label className="terminal-toggle">
                   <input
                     type="checkbox"
@@ -229,6 +317,8 @@ export function ConsoleSection(props: ConsoleSectionProps) {
                   {t('terminalShowControlChars')}
                 </label>
               </div>
+            </div>
+            <div className="terminal-meta-actions">
               {isTerminalRunning && (
                 <div className="terminal-meta-group">
                   <button
@@ -303,6 +393,7 @@ export function ConsoleSection(props: ConsoleSectionProps) {
           <p className="hint">{isTerminalRunning ? t('terminalRunningHint') : t('terminalStoppedHint')}</p>
         </>
       )}
-    </section>
+      </section>
+    </>
   )
 }
