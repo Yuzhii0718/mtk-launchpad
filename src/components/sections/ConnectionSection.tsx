@@ -70,7 +70,9 @@ export function ConnectionSection(props: ConnectionSectionProps) {
     <section className="card grid two-cols">
       <div>
         <h2>{t('connectTitle')}</h2>
-        <p className="hint">{t('webSerialLimit')}</p>
+        <p className={`status ${isConnected ? 'ok' : 'warn'}`}>
+          {isConnected ? t('connected') : t('disconnected')}
+        </p>
         <div className="field-row">
           <label>{t('detectedPort')}</label>
           <input value={detectedPortInfo} readOnly />
@@ -147,9 +149,6 @@ export function ConnectionSection(props: ConnectionSectionProps) {
             {t('forgetDevice')}
           </button>
         </div>
-        <p className={`status ${isConnected ? 'ok' : 'warn'}`}>
-          {isConnected ? t('connected') : t('disconnected')}
-        </p>
       </div>
 
       <div>
