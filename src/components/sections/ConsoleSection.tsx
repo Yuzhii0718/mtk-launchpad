@@ -18,6 +18,9 @@ type ConsoleSectionProps = {
   terminalAppendNewline: boolean
   terminalNewlineMode: TerminalNewlineMode
   terminalRxBytes: number
+  terminalHexDisplay: boolean
+  terminalShowTimestamp: boolean
+  terminalShowControlChars: boolean
   isUbootInterrupting: boolean
   onRunWorkflow: () => Promise<void>
   onTerminateExecution: () => Promise<void>
@@ -31,6 +34,9 @@ type ConsoleSectionProps = {
   onTerminalInputKeyDown: (event: KeyboardEvent<HTMLInputElement>) => void
   onTerminalNewlineModeChange: (value: TerminalNewlineMode) => void
   onTerminalAppendNewlineChange: (value: boolean) => void
+  onTerminalHexDisplayChange: (value: boolean) => void
+  onTerminalShowTimestampChange: (value: boolean) => void
+  onTerminalShowControlCharsChange: (value: boolean) => void
   onSendTerminalInput: () => Promise<void>
   onSendTerminalSpecialKey: (key: TerminalSpecialKey) => Promise<void>
   onInterruptIntoUboot: () => Promise<void>
@@ -56,6 +62,9 @@ export function ConsoleSection(props: ConsoleSectionProps) {
     terminalAppendNewline,
     terminalNewlineMode,
     terminalRxBytes,
+    terminalHexDisplay,
+    terminalShowTimestamp,
+    terminalShowControlChars,
     isUbootInterrupting,
     onRunWorkflow,
     onTerminateExecution,
@@ -69,6 +78,9 @@ export function ConsoleSection(props: ConsoleSectionProps) {
     onTerminalInputKeyDown,
     onTerminalNewlineModeChange,
     onTerminalAppendNewlineChange,
+    onTerminalHexDisplayChange,
+    onTerminalShowTimestampChange,
+    onTerminalShowControlCharsChange,
     onSendTerminalInput,
     onSendTerminalSpecialKey,
     onInterruptIntoUboot,
@@ -118,7 +130,7 @@ export function ConsoleSection(props: ConsoleSectionProps) {
   }, [activeConsoleTab, terminalOutput])
 
   return (
-    <section className="card">
+    <section className={`card ${activeConsoleTab === 'terminal' ? 'console-terminal-focused' : ''}`}>
       <div className="button-row workflow-action-row">
         <button type="button" onClick={() => void onRunWorkflow()} disabled={!isConnected || isRunning}>
           {isRunning ? t('running') : t('startFlash')}
@@ -191,6 +203,32 @@ export function ConsoleSection(props: ConsoleSectionProps) {
           <div className="terminal-meta-row">
             <span>{t('terminalRxBytes')}: {terminalRxBytes}</span>
             <div className="terminal-meta-actions">
+              <div className="terminal-meta-group">
+                <label className="terminal-toggle">
+                  <input
+                    type="checkbox"
+                    checked={terminalHexDisplay}
+                    onChange={(event) => onTerminalHexDisplayChange(event.target.checked)}
+                  />
+                  {t('terminalHexDisplay')}
+                </label>
+                <label className="terminal-toggle">
+                  <input
+                    type="checkbox"
+                    checked={terminalShowTimestamp}
+                    onChange={(event) => onTerminalShowTimestampChange(event.target.checked)}
+                  />
+                  {t('terminalShowTimestamp')}
+                </label>
+                <label className="terminal-toggle">
+                  <input
+                    type="checkbox"
+                    checked={terminalShowControlChars}
+                    onChange={(event) => onTerminalShowControlCharsChange(event.target.checked)}
+                  />
+                  {t('terminalShowControlChars')}
+                </label>
+              </div>
               {isTerminalRunning && (
                 <div className="terminal-meta-group">
                   <button

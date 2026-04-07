@@ -1,3 +1,5 @@
+import type { SerialOpenOptions } from '../../types'
+
 const DEFAULT_TIMEOUT_MS = 2000
 
 type WebSerialLike = {
@@ -12,13 +14,7 @@ type WebSerialPortInfoLike = {
 }
 
 type WebSerialPortLike = {
-  open: (options: {
-    baudRate: number
-    dataBits: 8
-    stopBits: 1
-    parity: 'none'
-    flowControl: 'none'
-  }) => Promise<void>
+  open: (options: SerialOpenOptions & { flowControl: 'none' }) => Promise<void>
   close: () => Promise<void>
   forget?: () => Promise<void>
   getInfo?: () => WebSerialPortInfoLike
@@ -32,7 +28,12 @@ export class SerialConnection {
   private writer: WritableStreamDefaultWriter<Uint8Array> | null = null
   private unreadBuffer: Uint8Array<ArrayBufferLike> = new Uint8Array(0)
   private pendingReadPromise: Promise<ReadableStreamReadResult<Uint8Array>> | null = null
-  private baudRate = 115200
+  private openOptions: SerialOpenOptions = {
+    baudRate: 115200,
+    dataBits: 8,
+    stopBits: 1,
+    parity: 'none',
+  }
   private autoSelectedAuthorizedPort = false
 
   static isSupported(): boolean {
@@ -45,7 +46,7 @@ export class SerialConnection {
   }
 
   get currentBaudRate(): number {
-    return this.baudRate
+    return this.openOptions.baudRate
   }
 
   get portInfo(): string {
@@ -60,7 +61,7 @@ export class SerialConnection {
     return this.autoSelectedAuthorizedPort
   }
 
-  async open(baudRate: number): Promise<void> {
+  async open(options: SerialOpenOptions): Promise<void> {
     const nav = navigator as Navigator & { serial?: WebSerialLike }
     if (!nav.serial) {
       throw new Error('Web Serial not supported')
@@ -80,10 +81,10 @@ export class SerialConnection {
     }
 
     await this.port.open({
-      baudRate,
-      dataBits: 8,
-      stopBits: 1,
-      parity: 'none',
+      baudRate: options.baudRate,
+      dataBits: options.dataBits,
+      stopBits: options.stopBits,
+      parity: options.parity,
       flowControl: 'none',
     })
 
@@ -91,7 +92,7 @@ export class SerialConnection {
     this.writer = this.port.writable?.getWriter() ?? null
     this.unreadBuffer = new Uint8Array(0)
     this.pendingReadPromise = null
-    this.baudRate = baudRate
+    this.openOptions = { ...options }
   }
 
   async reopenAtBaudRate(baudRate: number): Promise<void> {
@@ -101,11 +102,15 @@ export class SerialConnection {
 
     const reusedPort = this.port
     await this.close()
-    await reusedPort.open({
+    const nextOptions: SerialOpenOptions = {
+      ...this.openOptions,
       baudRate,
-      dataBits: 8,
-      stopBits: 1,
-      parity: 'none',
+    }
+    await reusedPort.open({
+      baudRate: nextOptions.baudRate,
+      dataBits: nextOptions.dataBits,
+      stopBits: nextOptions.stopBits,
+      parity: nextOptions.parity,
       flowControl: 'none',
     })
 
@@ -114,7 +119,7 @@ export class SerialConnection {
     this.writer = this.port.writable?.getWriter() ?? null
     this.unreadBuffer = new Uint8Array(0)
     this.pendingReadPromise = null
-    this.baudRate = baudRate
+    this.openOptions = nextOptions
   }
 
   async write(data: Uint8Array): Promise<void> {

@@ -8,6 +8,19 @@ export type FirmwareKind = 'bl2' | 'fip'
 
 export type FirmwareSource = 'builtin' | 'github-release' | 'upload'
 
+export type SerialDataBits = 7 | 8
+
+export type SerialStopBits = 1 | 2
+
+export type SerialParity = 'none' | 'even' | 'odd'
+
+export interface SerialOpenOptions {
+  baudRate: number
+  dataBits: SerialDataBits
+  stopBits: SerialStopBits
+  parity: SerialParity
+}
+
 export interface ParsedFirmwareName {
   kind: FirmwareKind
   fileName: string

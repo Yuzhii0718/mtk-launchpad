@@ -1,10 +1,15 @@
 import { useTranslation } from 'react-i18next'
 import { CHIP_CONFIG, CHIP_OPTIONS } from '../../constants'
-import type { Chip, DdrType } from '../../types'
+import type { Chip, DdrType, SerialDataBits, SerialParity, SerialStopBits } from '../../types'
 
 type ConnectionSectionProps = {
   detectedPortInfo: string
   connectBaudRate: number
+  connectBaudRateOption: string
+  customConnectBaudRate: number
+  connectDataBits: SerialDataBits
+  connectStopBits: SerialStopBits
+  connectParity: SerialParity
   isConnected: boolean
   isRunning: boolean
   chip: Chip
@@ -13,7 +18,11 @@ type ConnectionSectionProps = {
   loadAddress: number
   bromLoadBaudRate: number
   bl2LoadBaudRate: number
-  onConnectBaudRateInput: (value: string) => void
+  onConnectBaudRateSelect: (value: string) => void
+  onCustomConnectBaudRateInput: (value: string) => void
+  onConnectDataBitsChange: (value: SerialDataBits) => void
+  onConnectStopBitsChange: (value: SerialStopBits) => void
+  onConnectParityChange: (value: SerialParity) => void
   onChipChange: (value: Chip) => void
   onDdrChange: (value: DdrType) => void
   onLoadAddressInput: (value: string) => void
@@ -29,6 +38,11 @@ export function ConnectionSection(props: ConnectionSectionProps) {
   const {
     detectedPortInfo,
     connectBaudRate,
+    connectBaudRateOption,
+    customConnectBaudRate,
+    connectDataBits,
+    connectStopBits,
+    connectParity,
     isConnected,
     isRunning,
     chip,
@@ -37,7 +51,11 @@ export function ConnectionSection(props: ConnectionSectionProps) {
     loadAddress,
     bromLoadBaudRate,
     bl2LoadBaudRate,
-    onConnectBaudRateInput,
+    onConnectBaudRateSelect,
+    onCustomConnectBaudRateInput,
+    onConnectDataBitsChange,
+    onConnectStopBitsChange,
+    onConnectParityChange,
     onChipChange,
     onDdrChange,
     onLoadAddressInput,
@@ -60,11 +78,63 @@ export function ConnectionSection(props: ConnectionSectionProps) {
         <p className="hint">{t('detectedPortHint')}</p>
         <div className="field-row">
           <label>{t('baudRate')}</label>
-          <input
-            type="number"
-            value={connectBaudRate}
-            onChange={(event) => onConnectBaudRateInput(event.target.value)}
-          />
+          <div className="baudrate-row">
+            <select
+              value={connectBaudRateOption}
+              onChange={(event) => onConnectBaudRateSelect(event.target.value)}
+            >
+              <option value="4800">4800</option>
+              <option value="9600">9600</option>
+              <option value="14400">14400</option>
+              <option value="19200">19200</option>
+              <option value="38400">38400</option>
+              <option value="57600">57600</option>
+              <option value="115200">115200</option>
+              <option value="custom">{t('customBaudRate')}</option>
+            </select>
+            {connectBaudRateOption === 'custom' && (
+              <input
+                type="number"
+                value={customConnectBaudRate}
+                placeholder={t('customBaudRatePlaceholder')}
+                onChange={(event) => onCustomConnectBaudRateInput(event.target.value)}
+              />
+            )}
+          </div>
+          <p className="hint">{t('selectedBaudRate')}: {connectBaudRate}</p>
+        </div>
+        <div className="serial-params-row">
+          <div className="serial-param">
+            <label>{t('dataBits')}</label>
+            <select
+              value={connectDataBits}
+              onChange={(event) => onConnectDataBitsChange(Number(event.target.value) as SerialDataBits)}
+            >
+              <option value={8}>8</option>
+              <option value={7}>7</option>
+            </select>
+          </div>
+          <div className="serial-param">
+            <label>{t('stopBits')}</label>
+            <select
+              value={connectStopBits}
+              onChange={(event) => onConnectStopBitsChange(Number(event.target.value) as SerialStopBits)}
+            >
+              <option value={1}>1</option>
+              <option value={2}>2</option>
+            </select>
+          </div>
+          <div className="serial-param">
+            <label>{t('parity')}</label>
+            <select
+              value={connectParity}
+              onChange={(event) => onConnectParityChange(event.target.value as SerialParity)}
+            >
+              <option value="none">{t('parityNone')}</option>
+              <option value="even">{t('parityEven')}</option>
+              <option value="odd">{t('parityOdd')}</option>
+            </select>
+          </div>
         </div>
         <div className="button-row">
           <button type="button" onClick={() => void onConnect()} disabled={isConnected}>

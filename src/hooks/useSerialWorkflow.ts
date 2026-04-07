@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react'
 import type { MutableRefObject } from 'react'
 import { CHIP_CONFIG } from '../constants'
-import type { Chip, LogLevel } from '../types'
+import type { Chip, LogLevel, SerialOpenOptions } from '../types'
 import { sleepMs, stringifyError } from '../utils/common'
 import { SerialConnection } from '../services/serial/SerialConnection'
 import { MtkUartProtocol } from '../services/serial/MtkUartProtocol'
@@ -18,7 +18,7 @@ type ResolvedPayload = {
 
 type UseSerialWorkflowParams = {
   chip: Chip
-  connectBaudRate: number
+  connectSerialOptions: SerialOpenOptions
   bromLoadBaudRate: number
   bl2LoadBaudRate: number
   loadAddress: number
@@ -32,7 +32,7 @@ type UseSerialWorkflowParams = {
 export function useSerialWorkflow(input: UseSerialWorkflowParams) {
   const {
     chip,
-    connectBaudRate,
+    connectSerialOptions,
     bromLoadBaudRate,
     bl2LoadBaudRate,
     loadAddress,
@@ -61,7 +61,7 @@ export function useSerialWorkflow(input: UseSerialWorkflowParams) {
     try {
       setDetectedPortInfo('-')
       const connection = new SerialConnection()
-      await connection.open(connectBaudRate)
+      await connection.open(connectSerialOptions)
       connectionRef.current = connection
       setIsConnected(true)
       setDetectedPortInfo(connection.portInfo)
@@ -72,7 +72,7 @@ export function useSerialWorkflow(input: UseSerialWorkflowParams) {
     } catch (error) {
       addLog('error', stringifyError(error))
     }
-  }, [addLog, connectBaudRate, getText])
+  }, [addLog, connectSerialOptions, getText])
 
   const handleDisconnect = useCallback(async (): Promise<void> => {
     if (!connectionRef.current) {
@@ -119,7 +119,7 @@ export function useSerialWorkflow(input: UseSerialWorkflowParams) {
 
     try {
       const connection = new SerialConnection()
-      await connection.open(connectBaudRate)
+      await connection.open(connectSerialOptions)
       connectionRef.current = connection
       setIsConnected(true)
       setDetectedPortInfo(connection.portInfo)
@@ -132,7 +132,7 @@ export function useSerialWorkflow(input: UseSerialWorkflowParams) {
     } finally {
       reconnectAfterTerminateRef.current = false
     }
-  }, [addLog, connectBaudRate, getText])
+  }, [addLog, connectSerialOptions, getText])
 
   const runWorkflow = useCallback(async (): Promise<void> => {
     const connection = connectionRef.current
