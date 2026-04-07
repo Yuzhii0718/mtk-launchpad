@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import './App.css'
 import i18n from './i18n'
@@ -9,7 +9,7 @@ import {
   GITHUB_PROJECT_URL,
   EEPROM_TOOL_URL,
 } from './constants'
-import type { Chip, DdrType } from './types'
+import type { Chip, DdrType, SerialDataBits, SerialParity, SerialStopBits } from './types'
 import { toNumber } from './utils/common'
 import { ConnectionSection } from './components/sections/ConnectionSection'
 import { FirmwareSection } from './components/sections/FirmwareSection'
@@ -24,10 +24,25 @@ function App() {
 
   const [chip, setChip] = useState<Chip>('mt7981')
   const [ddr, setDdr] = useState<DdrType>('ddr4')
-  const [connectBaudRate, setConnectBaudRate] = useState(115200)
+  const [connectBaudRateOption, setConnectBaudRateOption] = useState('115200')
+  const [customConnectBaudRate, setCustomConnectBaudRate] = useState(115200)
+  const [connectDataBits, setConnectDataBits] = useState<SerialDataBits>(8)
+  const [connectStopBits, setConnectStopBits] = useState<SerialStopBits>(1)
+  const [connectParity, setConnectParity] = useState<SerialParity>('none')
   const [bromLoadBaudRate, setBromLoadBaudRate] = useState(115200)
   const [bl2LoadBaudRate, setBl2LoadBaudRate] = useState(115200)
   const [loadAddress, setLoadAddress] = useState(CHIP_CONFIG.mt7981.defaultLoadAddress)
+
+  const connectBaudRate = connectBaudRateOption === 'custom'
+    ? customConnectBaudRate
+    : toNumber(connectBaudRateOption, 115200)
+
+  const connectSerialOptions = useMemo(() => ({
+    baudRate: connectBaudRate,
+    dataBits: connectDataBits,
+    stopBits: connectStopBits,
+    parity: connectParity,
+  }), [connectBaudRate, connectDataBits, connectParity, connectStopBits])
 
   const { logs, addLog, clearLogs } = useLogs()
 
@@ -107,7 +122,7 @@ function App() {
     handleTerminateExecution,
   } = useSerialWorkflow({
     chip,
-    connectBaudRate,
+    connectSerialOptions,
     bromLoadBaudRate,
     bl2LoadBaudRate,
     loadAddress,
@@ -130,6 +145,12 @@ function App() {
     terminalNewlineMode,
     setTerminalNewlineMode,
     terminalRxBytes,
+    terminalHexDisplay,
+    setTerminalHexDisplay,
+    terminalShowTimestamp,
+    setTerminalShowTimestamp,
+    terminalShowControlChars,
+    setTerminalShowControlChars,
     isUbootInterrupting,
     clearTerminalOutput,
     saveTerminalOutputToFile,
@@ -219,6 +240,11 @@ function App() {
       <ConnectionSection
         detectedPortInfo={detectedPortInfo}
         connectBaudRate={connectBaudRate}
+        connectBaudRateOption={connectBaudRateOption}
+        customConnectBaudRate={customConnectBaudRate}
+        connectDataBits={connectDataBits}
+        connectStopBits={connectStopBits}
+        connectParity={connectParity}
         isConnected={isConnected}
         isRunning={isRunning}
         chip={chip}
@@ -227,7 +253,11 @@ function App() {
         loadAddress={loadAddress}
         bromLoadBaudRate={bromLoadBaudRate}
         bl2LoadBaudRate={bl2LoadBaudRate}
-        onConnectBaudRateInput={(value) => setConnectBaudRate(toNumber(value, 115200))}
+        onConnectBaudRateSelect={setConnectBaudRateOption}
+        onCustomConnectBaudRateInput={(value) => setCustomConnectBaudRate(toNumber(value, 115200))}
+        onConnectDataBitsChange={(value) => setConnectDataBits(value)}
+        onConnectStopBitsChange={(value) => setConnectStopBits(value)}
+        onConnectParityChange={(value) => setConnectParity(value)}
         onChipChange={handleChipChange}
         onDdrChange={setDdr}
         onLoadAddressInput={(value) => setLoadAddress(toNumber(value, CHIP_CONFIG[chip].defaultLoadAddress))}
@@ -302,6 +332,9 @@ function App() {
         terminalAppendNewline={terminalAppendNewline}
         terminalNewlineMode={terminalNewlineMode}
         terminalRxBytes={terminalRxBytes}
+        terminalHexDisplay={terminalHexDisplay}
+        terminalShowTimestamp={terminalShowTimestamp}
+        terminalShowControlChars={terminalShowControlChars}
         isUbootInterrupting={isUbootInterrupting}
         onRunWorkflow={runWorkflow}
         onTerminateExecution={handleTerminateExecution}
@@ -315,6 +348,9 @@ function App() {
         onTerminalInputKeyDown={handleTerminalInputKeyDown}
         onTerminalNewlineModeChange={setTerminalNewlineMode}
         onTerminalAppendNewlineChange={setTerminalAppendNewline}
+        onTerminalHexDisplayChange={setTerminalHexDisplay}
+        onTerminalShowTimestampChange={setTerminalShowTimestamp}
+        onTerminalShowControlCharsChange={setTerminalShowControlChars}
         onSendTerminalInput={handleSendTerminalInput}
         onSendTerminalSpecialKey={sendTerminalSpecialKey}
         onInterruptIntoUboot={handleInterruptIntoUboot}

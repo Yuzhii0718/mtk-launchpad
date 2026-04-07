@@ -44,12 +44,29 @@ export function useTerminalController(input: UseTerminalControllerParams) {
   const [terminalNewlineMode, setTerminalNewlineMode] = useState<TerminalNewlineMode>('crlf')
   const [terminalRxBytes, setTerminalRxBytes] = useState(0)
   const [isUbootInterrupting, setIsUbootInterrupting] = useState(false)
+  const [terminalHexDisplay, setTerminalHexDisplay] = useState(false)
+  const [terminalShowTimestamp, setTerminalShowTimestamp] = useState(false)
+  const [terminalShowControlChars, setTerminalShowControlChars] = useState(false)
 
   const terminalStopRequestedRef = useRef(false)
   const terminalLoopPromiseRef = useRef<Promise<void> | null>(null)
   const terminalScreenRef = useRef<TerminalScreenState>(createTerminalScreenState())
   const pendingUiFrameRef = useRef<number | null>(null)
   const pendingUiChunkRef = useRef('')
+  const terminalLineStartRef = useRef(true)
+  const terminalDisplayOptionsRef = useRef({
+    hex: terminalHexDisplay,
+    timestamp: terminalShowTimestamp,
+    controlChars: terminalShowControlChars,
+  })
+
+  useEffect(() => {
+    terminalDisplayOptionsRef.current = {
+      hex: terminalHexDisplay,
+      timestamp: terminalShowTimestamp,
+      controlChars: terminalShowControlChars,
+    }
+  }, [terminalHexDisplay, terminalShowControlChars, terminalShowTimestamp])
 
   const appendTerminalOutput = useCallback((chunk: string): void => {
     if (!chunk) {
@@ -110,7 +127,133 @@ export function useTerminalController(input: UseTerminalControllerParams) {
     resetTerminalScreenState(terminalScreenRef.current)
     setTerminalOutput('')
     setTerminalRxBytes(0)
+    terminalLineStartRef.current = true
   }, [])
+
+  const formatTimestamp = useCallback((): string => {
+    const now = new Date()
+    const pad = (value: number, size = 2): string => String(value).padStart(size, '0')
+    return `[${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}.${pad(now.getMilliseconds(), 3)}] `
+  }, [])
+
+  const applyTimestamps = useCallback((text: string): string => {
+    if (!terminalDisplayOptionsRef.current.timestamp || text.length === 0) {
+      terminalLineStartRef.current = text.endsWith('\n')
+      return text
+    }
+
+    let result = ''
+    if (terminalLineStartRef.current) {
+      result += formatTimestamp()
+    }
+
+    for (let i = 0; i < text.length; i += 1) {
+      const char = text[i]
+      result += char
+      if (char === '\n' && i < text.length - 1) {
+        result += formatTimestamp()
+      }
+    }
+
+    terminalLineStartRef.current = text.endsWith('\n')
+    return result
+  }, [formatTimestamp])
+
+  const visualizeControlCharsForOutput = useCallback((value: string): string => {
+    return value
+      .split('\u001b').join('\\x1b')
+      .replace(/\r\n/g, '\\r\\n\n')
+      .replace(/\r/g, '\\r')
+      .replace(/\n/g, '\\n\n')
+      .replace(/\t/g, '\\t')
+  }, [])
+
+  const formatHexChunk = useCallback((bytes: Uint8Array): string => {
+    const bytesPerLine = 16
+    const lines: string[] = []
+    for (let i = 0; i < bytes.length; i += bytesPerLine) {
+      const slice = bytes.slice(i, i + bytesPerLine)
+      const line = Array.from(slice).map((value) => value.toString(16).padStart(2, '0')).join(' ')
+      lines.push(line)
+    }
+    return lines.length ? `${lines.join('\n')}\n` : ''
+  }, [])
+
+  const formatHexInline = useCallback((bytes: Uint8Array): string => {
+    return Array.from(bytes).map((value) => value.toString(16).padStart(2, '0')).join(' ')
+  }, [])
+
+  const parseHexInput = useCallback((value: string): Uint8Array | null => {
+    const trimmed = value.trim()
+    if (!trimmed) {
+      return new Uint8Array(0)
+    }
+
+    if (/[^0-9a-fA-FxX\s,;:]/.test(trimmed)) {
+      return null
+    }
+
+    const tokens = trimmed.split(/[\s,;:]+/).filter(Boolean)
+    const bytes: number[] = []
+
+    for (const token of tokens) {
+      const normalized = token.startsWith('0x') || token.startsWith('0X')
+        ? token.slice(2)
+        : token
+      if (!normalized || !/^[0-9a-fA-F]+$/.test(normalized)) {
+        return null
+      }
+
+      if (normalized.length === 1) {
+        bytes.push(Number.parseInt(`0${normalized}`, 16))
+        continue
+      }
+
+      if (normalized.length === 2) {
+        bytes.push(Number.parseInt(normalized, 16))
+        continue
+      }
+
+      if (normalized.length % 2 !== 0) {
+        return null
+      }
+
+      for (let i = 0; i < normalized.length; i += 2) {
+        bytes.push(Number.parseInt(normalized.slice(i, i + 2), 16))
+      }
+    }
+
+    return new Uint8Array(bytes)
+  }, [])
+
+  const concatBytes = useCallback((left: Uint8Array, right: Uint8Array): Uint8Array => {
+    if (!right.length) {
+      return left
+    }
+    if (!left.length) {
+      return right
+    }
+    const combined = new Uint8Array(left.length + right.length)
+    combined.set(left, 0)
+    combined.set(right, left.length)
+    return combined
+  }, [])
+
+  const formatIncomingChunk = useCallback((bytes: Uint8Array, decoder: TextDecoder): string => {
+    const options = terminalDisplayOptionsRef.current
+    let text: string
+
+    if (options.hex) {
+      text = formatHexChunk(bytes)
+      return applyTimestamps(text)
+    }
+
+    text = decoder.decode(bytes, { stream: true })
+    if (options.controlChars) {
+      text = visualizeControlCharsForOutput(text)
+    }
+    return applyTimestamps(text)
+  }, [applyTimestamps, formatHexChunk, visualizeControlCharsForOutput])
 
   const stopTerminalSession = useCallback(async (withLog: boolean): Promise<void> => {
     terminalStopRequestedRef.current = true
@@ -161,7 +304,7 @@ export function useTerminalController(input: UseTerminalControllerParams) {
             }
 
             setTerminalRxBytes((prev) => prev + bytes.length)
-            const chunk = decoder.decode(bytes, { stream: true })
+            const chunk = formatIncomingChunk(bytes, decoder)
             scheduleAppendTerminalOutput(chunk)
           } catch (error) {
             if (terminalStopRequestedRef.current) {
@@ -177,7 +320,15 @@ export function useTerminalController(input: UseTerminalControllerParams) {
         }
 
         const remain = decoder.decode()
-        scheduleAppendTerminalOutput(remain)
+        if (remain.length) {
+          const options = terminalDisplayOptionsRef.current
+          if (!options.hex) {
+            const formatted = applyTimestamps(options.controlChars
+              ? visualizeControlCharsForOutput(remain)
+              : remain)
+            scheduleAppendTerminalOutput(formatted)
+          }
+        }
       } catch (error) {
         addLog('error', `${getText('terminalReadFailed')}: ${stringifyError(error)}`)
       } finally {
@@ -186,7 +337,7 @@ export function useTerminalController(input: UseTerminalControllerParams) {
         setIsTerminalRunning(false)
       }
     })()
-  }, [addLog, connectionRef, flushPendingTerminalOutput, getText, isConnected, isRunning, scheduleAppendTerminalOutput])
+  }, [addLog, applyTimestamps, connectionRef, flushPendingTerminalOutput, formatIncomingChunk, getText, isConnected, isRunning, scheduleAppendTerminalOutput, visualizeControlCharsForOutput])
 
   const handleSendTerminalInput = useCallback(async (): Promise<void> => {
     const connection = connectionRef.current
@@ -206,6 +357,26 @@ export function useTerminalController(input: UseTerminalControllerParams) {
 
     try {
       const lineEnding = terminalAppendNewline ? resolveLineEnding(terminalNewlineMode) : ''
+
+      if (terminalHexDisplay) {
+        const parsed = parseHexInput(raw)
+        if (!parsed) {
+          addLog('error', getText('terminalHexInputInvalid'))
+          return
+        }
+
+        const endingBytes = lineEnding.length ? new TextEncoder().encode(lineEnding) : new Uint8Array(0)
+        const payloadBytes = concatBytes(parsed, endingBytes)
+        if (!payloadBytes.length) {
+          return
+        }
+
+        appendTerminalOutput(`\n> [HEX] ${formatHexInline(payloadBytes)}\n`)
+        await connection.write(payloadBytes)
+        setTerminalInput('')
+        return
+      }
+
       const payload = `${raw}${lineEnding}`
       if (!payload.length) {
         return
@@ -219,11 +390,15 @@ export function useTerminalController(input: UseTerminalControllerParams) {
   }, [
     addLog,
     appendTerminalOutput,
+    concatBytes,
     connectionRef,
+    formatHexInline,
     getText,
     isConnected,
     isTerminalRunning,
+    parseHexInput,
     terminalAppendNewline,
+    terminalHexDisplay,
     terminalInput,
     terminalNewlineMode,
   ])
@@ -390,6 +565,12 @@ export function useTerminalController(input: UseTerminalControllerParams) {
     setTerminalNewlineMode,
     terminalRxBytes,
     isUbootInterrupting,
+    terminalHexDisplay,
+    setTerminalHexDisplay,
+    terminalShowTimestamp,
+    setTerminalShowTimestamp,
+    terminalShowControlChars,
+    setTerminalShowControlChars,
     clearTerminalOutput,
     saveTerminalOutputToFile,
     stopTerminalSession,

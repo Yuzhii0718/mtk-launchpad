@@ -72,6 +72,29 @@
   margin-bottom: 0.75rem;
 }
 
+.baudrate-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.serial-params-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.serial-param {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.serial-param label {
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
 .field-row label {
   font-size: 0.9rem;
   color: var(--muted);
@@ -250,6 +273,14 @@ button:disabled {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   line-height: 1.4;
+  transition: transform 220ms ease, max-height 220ms ease, min-height 220ms ease, box-shadow 220ms ease;
+}
+
+.console-terminal-focused .terminal-panel {
+  min-height: 320px;
+  max-height: 520px;
+  transform: scale(1.02);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18);
 }
 
 .terminal-input-row {
@@ -332,6 +363,14 @@ button:disabled {
   }
 
   .terminal-input-row {
+    grid-template-columns: 1fr;
+  }
+
+  .baudrate-row {
+    grid-template-columns: 1fr;
+  }
+
+  .serial-params-row {
     grid-template-columns: 1fr;
   }
 

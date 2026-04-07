@@ -261,7 +261,7 @@ export function ConsoleSection(props: ConsoleSectionProps) {
               value={terminalInput}
               onChange={(event) => onTerminalInputChange(event.target.value)}
               onKeyDown={onTerminalInputKeyDown}
-              placeholder={t('terminalInputPlaceholder')}
+              placeholder={terminalHexDisplay ? t('terminalInputPlaceholderHex') : t('terminalInputPlaceholder')}
               disabled={!isTerminalRunning}
             />
             <select
