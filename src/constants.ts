@@ -31,7 +31,7 @@ export const DEFAULT_BL2_RELEASE_API =
   'https://api.github.com/repos/Yuzhii0718/bl-mt798x-dhcpd/releases/tags/2026.03.27-0159-bl2-preloader'
 
 export const DEFAULT_FIP_RELEASE_API =
-  'https://api.github.com/repos/Yuzhii0718/bl-mt798x-dhcpd/releases/tags/2026.03.23-1218-all'
+  'https://api.github.com/repos/Yuzhii0718/bl-mt798x-dhcpd/releases/tags/2026.05.01-2238-all'
 
 export const GITHUB_BOOTLOADER_URL = 'https://github.com/Yuzhii0718/bl-mt798x-dhcpd'
 export const GITHUB_PROJECT_URL = 'https://github.com/Yuzhii0718/mtk-launchpad'
